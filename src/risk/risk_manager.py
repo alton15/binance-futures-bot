@@ -102,8 +102,8 @@ class RiskManager:
         if not result.passed:
             return result
 
-        # Gate 7: Total exposure
-        await self._gate_total_exposure(position_params.notional_value, result)
+        # Gate 7: Total exposure (margin-based)
+        await self._gate_total_exposure(position_params.margin_required, result)
         if not result.passed:
             return result
 
@@ -229,22 +229,40 @@ class RiskManager:
         )
 
     async def _gate_total_exposure(
-        self, new_notional: float, result: RiskCheckResult
+        self, new_margin: float, result: RiskCheckResult
     ) -> None:
-        """Gate 7: Total notional exposure limit."""
+        """Gate 7: Total margin exposure limit.
+
+        Compares actual margin used (not notional) against capital.
+        Soft cap with 5% tolerance, and skips if remaining capacity < 5%.
+        """
         positions = await get_open_positions(is_paper=self.is_paper)
-        total_exposure = sum(p.get("cost", 0) for p in positions) + new_notional
+        used_margin = sum(p.get("margin", 0) for p in positions)
         stats = await get_trading_stats(is_paper=self.is_paper)
         current_capital = self.capital + stats["total_realized_pnl"]
-        max_exposure = current_capital * RISK["max_exposure_pct"]
 
-        passed = total_exposure <= max_exposure
+        soft_cap = current_capital * RISK["max_exposure_pct"]       # 70%
+        hard_cap = current_capital * (RISK["max_exposure_pct"] + 0.05)  # 75%
+        min_remaining = current_capital * 0.05                      # 5%
+
+        total_margin = used_margin + new_margin
+        remaining = soft_cap - used_margin
+
+        # Skip if remaining capacity is too small to be worth it
+        if remaining < min_remaining:
+            result.add_gate(
+                "total_exposure", False,
+                f"Remaining capacity too small: ${remaining:.2f} < ${min_remaining:.2f}",
+            )
+            return
+
+        passed = total_margin <= hard_cap
         result.add_gate(
             "total_exposure",
             passed,
-            f"Exposure: ${total_exposure:.2f} (max: ${max_exposure:.2f})"
+            f"Margin: ${total_margin:.2f} / ${soft_cap:.2f} (hard cap: ${hard_cap:.2f})"
             if passed else
-            f"Exposure limit: ${total_exposure:.2f} > ${max_exposure:.2f}",
+            f"Margin limit: ${total_margin:.2f} > ${hard_cap:.2f}",
         )
 
     def _gate_leverage_valid(

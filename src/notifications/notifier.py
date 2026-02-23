@@ -110,6 +110,9 @@ async def notify_status(
     mode = "PAPER" if is_paper else "LIVE"
     pnl = stats.get("total_realized_pnl", 0)
     unrealized = stats.get("unrealized_pnl", 0)
+    margin_used = stats.get("total_margin_in_use", 0)
+    wallet = INITIAL_CAPITAL + pnl + unrealized
+    available = INITIAL_CAPITAL + pnl - margin_used
 
     if positions:
         pos_lines = []
@@ -129,16 +132,18 @@ async def notify_status(
         "title": f"Status [{mode}]",
         "color": 0x2F3136,
         "fields": [
-            {"name": "Trades", "value": str(stats.get("total_trades", 0)), "inline": True},
-            {"name": "Open", "value": str(stats.get("open_positions", 0)), "inline": True},
-            {"name": "Win Rate", "value": f"{stats.get('win_rate', 0):.0%}", "inline": True},
+            {"name": "Wallet", "value": f"${wallet:.2f}", "inline": True},
+            {"name": "Available", "value": f"${available:.2f}", "inline": True},
+            {"name": "Margin Used", "value": f"${margin_used:.2f}", "inline": True},
             {"name": "Realized P&L", "value": _fmt_pnl(pnl), "inline": True},
             {"name": "Unrealized", "value": _fmt_pnl(unrealized), "inline": True},
             {"name": "Today P&L", "value": _fmt_pnl(stats.get("today_pnl", 0)), "inline": True},
-            {"name": "Margin Used", "value": f"${stats.get('total_margin_in_use', 0):.2f}", "inline": True},
+            {"name": "Trades", "value": str(stats.get("total_trades", 0)), "inline": True},
+            {"name": "Win Rate", "value": f"{stats.get('win_rate', 0):.0%}", "inline": True},
+            {"name": "Open", "value": str(stats.get("open_positions", 0)), "inline": True},
             {"name": "Positions", "value": pos_text, "inline": False},
         ],
-        "footer": {"text": f"Capital: ${INITIAL_CAPITAL:.0f}"},
+        "footer": {"text": f"Initial Capital: ${INITIAL_CAPITAL:.0f}"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await _send_discord(DISCORD_WEBHOOK_REPORTS, [embed])

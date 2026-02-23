@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -10,6 +11,22 @@ import ccxt.async_support as ccxt
 from config.settings import BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_DELAY = 5
+
+
+async def _retry(coro_func, *args, retries=MAX_RETRIES, **kwargs):
+    """Retry an async call with exponential backoff."""
+    for attempt in range(1, retries + 1):
+        try:
+            return await coro_func(*args, **kwargs)
+        except (ccxt.RequestTimeout, ccxt.ExchangeNotAvailable, ccxt.NetworkError) as e:
+            if attempt == retries:
+                raise
+            delay = RETRY_DELAY * attempt
+            logger.warning("Retry %d/%d after %ds: %s", attempt, retries, delay, e)
+            await asyncio.sleep(delay)
 
 
 class BinanceClient:
@@ -28,12 +45,15 @@ class BinanceClient:
         if testnet:
             options["sandboxMode"] = True
 
-        self.exchange = ccxt.binance({
+        self.exchange = ccxt.binanceusdm({
             "apiKey": api_key,
             "secret": api_secret,
             "options": options,
             "enableRateLimit": True,
+            "timeout": 30000,
         })
+        # Skip spot API calls (api.binance.com) - only use futures API (fapi.binance.com)
+        self.exchange.has["fetchCurrencies"] = False
         if testnet:
             self.exchange.set_sandbox_mode(True)
 
@@ -57,34 +77,34 @@ class BinanceClient:
         limit: int = 200,
     ) -> list[list]:
         """Fetch OHLCV candles."""
-        return await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        return await _retry(self.exchange.fetch_ohlcv, symbol, timeframe, limit=limit)
 
     async def fetch_tickers(self) -> dict[str, Any]:
         """Fetch all futures tickers."""
-        return await self.exchange.fetch_tickers()
+        return await _retry(self.exchange.fetch_tickers)
 
     async def fetch_ticker(self, symbol: str) -> dict[str, Any]:
         """Fetch a single ticker."""
-        return await self.exchange.fetch_ticker(symbol)
+        return await _retry(self.exchange.fetch_ticker, symbol)
 
     async def fetch_orderbook(self, symbol: str, limit: int = 10) -> dict[str, Any]:
         """Fetch order book."""
-        return await self.exchange.fetch_order_book(symbol, limit=limit)
+        return await _retry(self.exchange.fetch_order_book, symbol, limit=limit)
 
     # -- Account Data ----------------------------------------------
 
     async def fetch_balance(self) -> dict[str, Any]:
         """Fetch futures account balance."""
-        return await self.exchange.fetch_balance({"type": "future"})
+        return await _retry(self.exchange.fetch_balance, {"type": "future"})
 
     async def fetch_positions(self, symbols: list[str] | None = None) -> list[dict]:
         """Fetch open positions."""
-        positions = await self.exchange.fetch_positions(symbols)
+        positions = await _retry(self.exchange.fetch_positions, symbols)
         return [p for p in positions if float(p.get("contracts", 0)) > 0]
 
     async def fetch_funding_rate(self, symbol: str) -> dict[str, Any]:
         """Fetch current funding rate for a symbol."""
-        return await self.exchange.fetch_funding_rate(symbol)
+        return await _retry(self.exchange.fetch_funding_rate, symbol)
 
     async def get_usdt_balance(self) -> float:
         """Get available USDT balance."""
@@ -180,12 +200,12 @@ class BinanceClient:
     # -- Market Info ------------------------------------------------
 
     async def get_futures_symbols(self) -> list[str]:
-        """Get all active USDT-M futures symbols."""
-        await self.exchange.load_markets()
+        """Get all active USDT-M perpetual futures (swap) symbols."""
+        await _retry(self.exchange.load_markets, True)
         symbols = []
         for sym, market in self.exchange.markets.items():
             if (
-                market.get("future")
+                market.get("swap")
                 and market.get("active")
                 and market.get("quote") == "USDT"
                 and market.get("linear")
@@ -196,7 +216,7 @@ class BinanceClient:
     async def get_mark_price(self, symbol: str) -> float | None:
         """Get current mark price."""
         try:
-            ticker = await self.exchange.fetch_ticker(symbol)
+            ticker = await self.fetch_ticker(symbol)
             return float(ticker.get("last", 0))
         except Exception:
             return None

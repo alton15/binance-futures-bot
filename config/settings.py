@@ -71,7 +71,7 @@ RISK = {
     "risk_per_trade_pct": 0.02,       # 2% of capital per trade
     "daily_loss_limit_pct": 0.05,     # 5% daily loss limit
     "max_drawdown_pct": 0.15,         # 15% max drawdown from peak
-    "max_exposure_pct": 0.50,         # 50% total capital exposure
+    "max_exposure_pct": 0.70,         # 70% total capital exposure
     "signal_strength_min": 0.6,
     "liquidation_buffer_pct": 0.30,   # 30% distance to liquidation
     "funding_rate_max": 0.001,        # 0.1% per 8h
@@ -95,13 +95,13 @@ LEVERAGE_TIERS = [
 # -- Scanner -------------------------------------------------------
 SCANNER = {
     "max_candidates": 10,
-    "scan_interval_minutes": 60,
+    "scan_interval_minutes": 30,
     "analysis_cooldown_hours": 4,
 }
 
 # -- Schedule ------------------------------------------------------
 SCHEDULE = {
-    "scan_interval_minutes": 60,
+    "scan_interval_minutes": 30,
     "monitor_interval_minutes": 5,
     "status_interval_minutes": 10,
     "daily_report_hour": 23,

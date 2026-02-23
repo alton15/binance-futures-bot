@@ -1,0 +1,36 @@
+[project]
+name = "binance-futures-bot"
+version = "0.1.0"
+description = "Technical analysis based Binance USDT-M futures trading bot"
+requires-python = ">=3.11"
+dependencies = [
+    "ccxt>=4.0.0",
+    "pandas>=2.0.0",
+    "pandas-ta>=0.3.14b",
+    "numpy>=1.24.0",
+    "aiosqlite>=0.19.0",
+    "apscheduler>=3.10.0",
+    "websockets>=12.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[project.scripts]
+futuresbot = "src.main:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*", "config*", "scripts*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,128 @@
+"""Dynamic leverage and position sizing calculator."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
+from config.settings import RISK, LEVERAGE_TIERS, INITIAL_CAPITAL
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PositionParams:
+    """Calculated position parameters."""
+
+    leverage: int
+    position_size: float     # Quantity in base currency
+    notional_value: float    # USD value of position
+    margin_required: float   # USDT margin required
+    sl_price: float
+    tp_price: float
+    liquidation_price: float
+
+
+def get_max_leverage(volatility_24h: float) -> int:
+    """Get max allowed leverage based on daily volatility tier.
+
+    Tiers:
+        0-2%   -> 8x
+        2-4%   -> 5x
+        4-6%   -> 3x
+        6%+    -> 2x
+    """
+    for tier in LEVERAGE_TIERS:
+        if volatility_24h <= tier["max_volatility"]:
+            return tier["max_leverage"]
+    return 2
+
+
+def calculate_leverage(
+    volatility_24h: float,
+    signal_strength: float,
+    current_drawdown_pct: float = 0,
+) -> int:
+    """Calculate dynamic leverage.
+
+    Formula: max_tier_leverage * signal_strength * (1 - drawdown_pct)
+    Clamped to [2, 8]
+    """
+    max_lev = get_max_leverage(volatility_24h)
+    raw = max_lev * signal_strength * (1 - current_drawdown_pct)
+    return max(2, min(8, int(raw)))
+
+
+def calculate_position(
+    entry_price: float,
+    atr: float,
+    direction: str,
+    leverage: int,
+    capital: float = INITIAL_CAPITAL,
+    volatility_24h: float = 0.03,
+) -> PositionParams:
+    """Calculate full position parameters.
+
+    Uses fixed-fraction risk model:
+    - Risk per trade = capital * risk_per_trade_pct (2%)
+    - SL distance = ATR * sl_atr_multiplier
+    - Position size = risk_amount / sl_distance
+    - TP distance = ATR * tp_atr_multiplier
+    """
+    risk_amount = capital * RISK["risk_per_trade_pct"]
+    sl_distance = atr * RISK["sl_atr_multiplier"]
+    tp_distance = atr * RISK["tp_atr_multiplier"]
+
+    if sl_distance <= 0 or entry_price <= 0:
+        logger.warning("Invalid SL distance or entry price")
+        return PositionParams(
+            leverage=leverage,
+            position_size=0,
+            notional_value=0,
+            margin_required=0,
+            sl_price=0,
+            tp_price=0,
+            liquidation_price=0,
+        )
+
+    # Position size in base currency (inverse of SL distance)
+    position_size = risk_amount / sl_distance
+    notional_value = position_size * entry_price
+    margin_required = notional_value / leverage
+
+    # SL/TP prices
+    if direction == "LONG":
+        sl_price = entry_price - sl_distance
+        tp_price = entry_price + tp_distance
+    else:  # SHORT
+        sl_price = entry_price + sl_distance
+        tp_price = entry_price - tp_distance
+
+    # Liquidation price (simplified)
+    # LONG: liq = entry * (1 - 1/leverage + maintenance_margin)
+    # SHORT: liq = entry * (1 + 1/leverage - maintenance_margin)
+    # Using 0.5% maintenance margin approximation
+    maint_margin = 0.005
+    if direction == "LONG":
+        liquidation_price = entry_price * (1 - (1 / leverage) + maint_margin)
+    else:
+        liquidation_price = entry_price * (1 + (1 / leverage) - maint_margin)
+
+    params = PositionParams(
+        leverage=leverage,
+        position_size=round(position_size, 6),
+        notional_value=round(notional_value, 4),
+        margin_required=round(margin_required, 4),
+        sl_price=round(sl_price, 4),
+        tp_price=round(tp_price, 4),
+        liquidation_price=round(liquidation_price, 4),
+    )
+
+    logger.info(
+        "Position calc: %s %dx size=%.6f notional=$%.2f margin=$%.2f SL=%.4f TP=%.4f liq=%.4f",
+        direction, leverage, params.position_size, params.notional_value,
+        params.margin_required, params.sl_price, params.tp_price,
+        params.liquidation_price,
+    )
+
+    return params

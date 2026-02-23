@@ -94,9 +94,9 @@ LEVERAGE_TIERS = [
 
 # -- Scanner -------------------------------------------------------
 SCANNER = {
-    "max_candidates": 10,
+    "max_candidates": 30,
     "scan_interval_minutes": 30,
-    "analysis_cooldown_hours": 4,
+    "analysis_cooldown_hours": 2,
 }
 
 # -- Schedule ------------------------------------------------------

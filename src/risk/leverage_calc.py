@@ -90,6 +90,14 @@ def calculate_position(
     notional_value = position_size * entry_price
     margin_required = notional_value / leverage
 
+    # Cap margin at 15% of capital per position
+    max_margin_per_trade = capital * 0.15
+    if margin_required > max_margin_per_trade:
+        scale = max_margin_per_trade / margin_required
+        position_size *= scale
+        notional_value *= scale
+        margin_required = max_margin_per_trade
+
     # SL/TP prices
     if direction == "LONG":
         sl_price = entry_price - sl_distance

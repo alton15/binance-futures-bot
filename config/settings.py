@@ -67,10 +67,10 @@ SIGNALS = {
 
 # -- Risk Parameters -----------------------------------------------
 RISK = {
-    "max_open_positions": 5,
-    "risk_per_trade_pct": 0.02,       # 2% of capital per trade
-    "daily_loss_limit_pct": 0.05,     # 5% daily loss limit
-    "max_drawdown_pct": 0.15,         # 15% max drawdown from peak
+    "max_open_positions": 7,
+    "risk_per_trade_pct": 0.03,       # 3% of capital per trade
+    "daily_loss_limit_pct": 0.08,     # 8% daily loss limit
+    "max_drawdown_pct": 0.25,         # 25% max drawdown from peak
     "max_exposure_pct": 0.70,         # 70% total capital exposure
     "signal_strength_min": 0.6,
     "liquidation_buffer_pct": 0.30,   # 30% distance to liquidation

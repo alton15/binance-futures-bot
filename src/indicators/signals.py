@@ -187,12 +187,12 @@ def _vote_macd(ind: IndicatorSet) -> tuple[str, str]:
     ):
         return "SHORT", "bearish crossover"
 
-    # Histogram direction
-    if ind.macd_hist is not None:
-        if ind.macd > ind.macd_signal and ind.macd_hist > 0:
-            return "LONG", "histogram positive"
-        elif ind.macd < ind.macd_signal and ind.macd_hist < 0:
-            return "SHORT", "histogram negative"
+    # Histogram direction - only vote if histogram is expanding
+    if ind.macd_hist is not None and ind.prev_macd_hist is not None:
+        if ind.macd > ind.macd_signal and ind.macd_hist > 0 and ind.macd_hist > ind.prev_macd_hist:
+            return "LONG", "histogram expanding positive"
+        elif ind.macd < ind.macd_signal and ind.macd_hist < 0 and ind.macd_hist < ind.prev_macd_hist:
+            return "SHORT", "histogram expanding negative"
 
     return "NEUTRAL", "no signal"
 
@@ -206,9 +206,9 @@ def _vote_rsi(ind: IndicatorSet) -> tuple[str, str]:
         return "LONG", f"oversold ({ind.rsi:.1f})"
     elif ind.rsi > 70:
         return "SHORT", f"overbought ({ind.rsi:.1f})"
-    elif ind.rsi < 45:
+    elif ind.rsi < 40:
         return "LONG", f"below midline ({ind.rsi:.1f})"
-    elif ind.rsi > 55:
+    elif ind.rsi > 60:
         return "SHORT", f"above midline ({ind.rsi:.1f})"
 
     return "NEUTRAL", f"neutral ({ind.rsi:.1f})"
@@ -220,7 +220,9 @@ def _vote_ema_trend(ind: IndicatorSet) -> tuple[str, str]:
         return "NEUTRAL", "no data"
 
     pct = (ind.close - ind.ema_slow) / ind.ema_slow
-    if ind.close > ind.ema_slow:
+    if abs(pct) < 0.01:
+        return "NEUTRAL", f"near 200 EMA ({pct:+.2%})"
+    elif pct > 0:
         return "LONG", f"above 200 EMA ({pct:+.2%})"
     else:
         return "SHORT", f"below 200 EMA ({pct:+.2%})"
@@ -241,9 +243,9 @@ def _vote_bollinger(ind: IndicatorSet) -> tuple[str, str]:
         return "LONG", f"at lower band ({position:.2f})"
     elif ind.close >= ind.bb_upper:
         return "SHORT", f"at upper band ({position:.2f})"
-    elif position < 0.3:
+    elif position < 0.2:
         return "LONG", f"near lower band ({position:.2f})"
-    elif position > 0.7:
+    elif position > 0.8:
         return "SHORT", f"near upper band ({position:.2f})"
 
     return "NEUTRAL", f"mid-band ({position:.2f})"
@@ -272,11 +274,15 @@ def _vote_ema_cross(ind: IndicatorSet) -> tuple[str, str]:
     ):
         return "SHORT", "death cross (9 < 21)"
 
-    # Current position
-    if ind.ema_fast > ind.ema_mid:
-        return "LONG", "9 EMA above 21 EMA"
-    else:
-        return "SHORT", "9 EMA below 21 EMA"
+    # Current position - only vote if spread is significant
+    spread = abs(ind.ema_fast - ind.ema_mid) / ind.ema_mid
+    if spread >= 0.003:
+        if ind.ema_fast > ind.ema_mid:
+            return "LONG", f"9 EMA above 21 EMA (spread {spread:.2%})"
+        else:
+            return "SHORT", f"9 EMA below 21 EMA (spread {spread:.2%})"
+
+    return "NEUTRAL", f"EMA converged (spread {spread:.2%})"
 
 
 def _vote_stochastic(ind: IndicatorSet) -> tuple[str, str]:
@@ -310,9 +316,9 @@ def _vote_stochastic(ind: IndicatorSet) -> tuple[str, str]:
     ):
         return "SHORT", "K crossed below D"
 
-    if ind.stoch_k < 30:
+    if ind.stoch_k < 20:
         return "LONG", f"oversold zone ({ind.stoch_k:.1f})"
-    elif ind.stoch_k > 70:
+    elif ind.stoch_k > 80:
         return "SHORT", f"overbought zone ({ind.stoch_k:.1f})"
 
     return "NEUTRAL", f"neutral ({ind.stoch_k:.1f})"
@@ -326,10 +332,10 @@ def _vote_volume(ind: IndicatorSet) -> tuple[str, str]:
     ratio = ind.volume / ind.volume_sma
 
     if ratio > 1.5:
-        # High volume - confirms current price direction
-        if ind.ema_fast is not None and ind.close > ind.ema_fast:
+        # High volume - confirms current price direction vs 200 EMA
+        if ind.ema_slow is not None and ind.close > ind.ema_slow:
             return "LONG", f"high volume bullish ({ratio:.1f}x avg)"
-        elif ind.ema_fast is not None and ind.close < ind.ema_fast:
+        elif ind.ema_slow is not None and ind.close < ind.ema_slow:
             return "SHORT", f"high volume bearish ({ratio:.1f}x avg)"
     elif ratio < 0.5:
         return "NEUTRAL", f"low volume ({ratio:.1f}x avg)"
@@ -342,7 +348,7 @@ def _vote_adx(ind: IndicatorSet) -> tuple[str, str]:
     if ind.adx is None:
         return "NEUTRAL", "no data"
 
-    if ind.adx >= 25:
+    if ind.adx >= 20:
         # Strong trend - agree with EMA trend
         if ind.ema_fast is not None and ind.ema_slow is not None:
             if ind.ema_fast > ind.ema_slow:

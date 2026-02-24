@@ -55,6 +55,7 @@ class IndicatorSet:
     prev_ema_mid: float | None = None
     prev_macd: float | None = None
     prev_macd_signal: float | None = None
+    prev_macd_hist: float | None = None
     prev_stoch_k: float | None = None
     prev_stoch_d: float | None = None
 
@@ -175,6 +176,7 @@ def compute_indicators(
         prev_ema_mid=prev(ema_mid),
         prev_macd=prev(macd_df[macd_col]) if macd_df is not None else None,
         prev_macd_signal=prev(macd_df[macd_sig_col]) if macd_df is not None else None,
+        prev_macd_hist=prev(macd_df[macd_hist_col]) if macd_df is not None else None,
         prev_stoch_k=prev(stoch_df[stoch_k_col]) if stoch_df is not None else None,
         prev_stoch_d=prev(stoch_df[stoch_d_col]) if stoch_df is not None else None,
         volume_sma=last(vol_sma),

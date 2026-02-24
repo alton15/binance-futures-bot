@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from config.settings import MARKET
+from config.settings import MARKET, SIGNALS
 from src.clients.binance_rest import BinanceClient
 from src.indicators.calculator import compute_indicators
 from src.indicators.signals import generate_signal, Signal
@@ -64,11 +64,9 @@ async def analyze_coin(
     # Adjust strength based on MTF confirmation
     adjusted_strength = primary_signal.strength
     if mtf_confirms >= 2:
-        adjusted_strength = min(1.0, primary_signal.strength * 1.2)
-    elif mtf_confirms == 1:
-        adjusted_strength = min(1.0, primary_signal.strength * 1.1)
+        adjusted_strength = min(1.0, primary_signal.strength * 1.15)
     elif mtf_confirms == 0 and primary_signal.direction != "NEUTRAL":
-        adjusted_strength *= 0.8
+        adjusted_strength *= 0.5
 
     # Save signal to DB
     import json
@@ -113,8 +111,9 @@ async def analyze_coin(
         "mtf_confirms": mtf_confirms,
         "is_actionable": (
             primary_signal.direction != "NEUTRAL"
-            and primary_signal.confirming_count >= 3
-            and adjusted_strength >= 0.6
+            and primary_signal.confirming_count >= SIGNALS["min_confirming"]
+            and adjusted_strength >= SIGNALS["min_strength"]
+            and mtf_confirms >= 1
         ),
         "close_price": indicators.close,
         "atr": indicators.atr,

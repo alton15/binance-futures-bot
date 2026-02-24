@@ -59,10 +59,10 @@ SIGNALS = {
         "ema_cross": 1.0,
         "stochastic": 1.0,
         "volume": 1.0,
-        "adx": 0.5,
+        "adx": 1.0,
     },
-    "min_confirming": 3,
-    "min_strength": 0.6,
+    "min_confirming": 4,
+    "min_strength": 0.55,
 }
 
 # -- Risk Parameters -----------------------------------------------
@@ -103,7 +103,7 @@ SCANNER = {
 SCHEDULE = {
     "scan_interval_minutes": 30,
     "monitor_interval_minutes": 5,
-    "status_interval_minutes": 10,
+    "status_interval_minutes": 30,
     "daily_report_hour": 23,
     "daily_report_minute": 0,
 }

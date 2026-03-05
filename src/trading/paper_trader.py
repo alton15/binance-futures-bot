@@ -6,6 +6,8 @@ import logging
 import uuid
 from typing import Any
 
+from config.settings import FEES
+from config.profiles import get_profile
 from src.risk.leverage_calc import PositionParams
 from src.db.models import (
     save_trade,
@@ -21,6 +23,9 @@ logger = logging.getLogger(__name__)
 class PaperTrader:
     """Simulated futures order execution that mirrors live trading interface."""
 
+    def __init__(self, profile_name: str = "neutral") -> None:
+        self.profile_name = profile_name
+
     async def place_order(
         self,
         symbol: str,
@@ -29,18 +34,7 @@ class PaperTrader:
         params: PositionParams,
         signal_id: int | None = None,
     ) -> dict[str, Any]:
-        """Place a simulated futures order.
-
-        Args:
-            symbol: Trading pair
-            direction: LONG or SHORT
-            entry_price: Current price
-            params: Calculated position parameters
-            signal_id: Associated signal ID
-
-        Returns:
-            Dict with trade details
-        """
+        """Place a simulated futures order."""
         if params.position_size <= 0:
             return {"success": False, "error": "Invalid position size"}
 
@@ -59,6 +53,7 @@ class PaperTrader:
             status="filled",
             is_paper=True,
             signal_id=signal_id,
+            profile=self.profile_name,
         )
 
         # Mark as filled
@@ -69,7 +64,9 @@ class PaperTrader:
             fill_size=params.position_size,
         )
 
-        # Open position
+        # Open position - use profile-specific trailing stop
+        profile_cfg = get_profile(self.profile_name)
+        trailing_stop_pct = profile_cfg.get_risk("trailing_stop_pct")
         position_id = await open_position(
             symbol=symbol,
             direction=direction,
@@ -81,14 +78,15 @@ class PaperTrader:
             liquidation_price=params.liquidation_price,
             sl_price=params.sl_price,
             tp_price=params.tp_price,
-            trailing_stop_pct=0.02,
+            trailing_stop_pct=trailing_stop_pct,
             trade_id=trade_id,
             is_paper=True,
+            profile=self.profile_name,
         )
 
         logger.info(
-            "Paper trade: %s %s %.6f @ %.4f (lev=%dx margin=$%.2f) [%s]",
-            direction, symbol, params.position_size,
+            "Paper trade [%s]: %s %s %.6f @ %.4f (lev=%dx margin=$%.2f) [%s]",
+            self.profile_name, direction, symbol, params.position_size,
             entry_price, params.leverage, params.margin_required, order_id,
         )
 
@@ -107,6 +105,7 @@ class PaperTrader:
             "sl_price": params.sl_price,
             "tp_price": params.tp_price,
             "is_paper": True,
+            "profile": self.profile_name,
         }
 
     async def close_order(
@@ -115,20 +114,12 @@ class PaperTrader:
         current_price: float,
         exit_reason: str = "",
     ) -> dict[str, Any]:
-        """Simulate closing a futures position.
-
-        Args:
-            position: Position dict from DB
-            current_price: Exit price
-            exit_reason: Why the position is being closed
-
-        Returns:
-            Dict with close details
-        """
+        """Simulate closing a futures position."""
         entry_price = position["entry_price"]
         size = position["size"]
         direction = position["direction"]
         leverage = position.get("leverage", 1)
+        profile = position.get("profile", self.profile_name)
 
         # Calculate P&L
         if direction == "LONG":
@@ -138,7 +129,14 @@ class PaperTrader:
 
         # Subtract funding paid
         funding_paid = position.get("funding_paid", 0)
-        net_pnl = pnl - abs(funding_paid)
+
+        # Subtract round-trip fees (entry + exit)
+        entry_notional = entry_price * size
+        exit_notional = current_price * size
+        fee_rate = FEES["taker_rate"] + FEES["slippage_rate"]
+        total_fees = (entry_notional + exit_notional) * fee_rate
+
+        net_pnl = pnl - abs(funding_paid) - total_fees
 
         order_id = f"paper-close-{uuid.uuid4().hex[:12]}"
 
@@ -154,6 +152,7 @@ class PaperTrader:
             order_id=order_id,
             status="filled",
             is_paper=True,
+            profile=profile,
         )
 
         # Close position
@@ -162,9 +161,9 @@ class PaperTrader:
         )
 
         logger.info(
-            "Paper close: %s %s @ %.4f | P&L: $%.4f (funding: $%.4f) [%s]",
-            position["symbol"], direction, current_price,
-            net_pnl, funding_paid, order_id,
+            "Paper close [%s]: %s %s @ %.4f | P&L: $%.4f (fees: $%.4f, funding: $%.4f) [%s]",
+            profile, position["symbol"], direction, current_price,
+            net_pnl, total_fees, funding_paid, order_id,
         )
 
         return {
@@ -174,4 +173,5 @@ class PaperTrader:
             "pnl": net_pnl,
             "exit_reason": exit_reason,
             "is_paper": True,
+            "profile": profile,
         }

@@ -19,6 +19,16 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+def _resolve_profiles(args: argparse.Namespace) -> list[str]:
+    """Resolve --profile arg to list of profile names."""
+    profile_val = getattr(args, "profile", None)
+    if profile_val == "all" or getattr(args, "multi", False):
+        return ["conservative", "neutral", "aggressive"]
+    if profile_val and profile_val != "all":
+        return [profile_val]
+    return ["neutral"]
+
+
 async def cmd_run(args: argparse.Namespace) -> None:
     """Run the full trading pipeline once or start scheduler."""
     import os
@@ -28,14 +38,33 @@ async def cmd_run(args: argparse.Namespace) -> None:
     elif args.live:
         os.environ["TRADING_MODE"] = "live"
 
-    from src.strategy.orchestrator import run_pipeline
+    from config.profiles import get_profile, ALL_PROFILES
+    from src.strategy.orchestrator import run_pipeline, run_multi_profile_pipeline
+
+    profiles = _resolve_profiles(args)
 
     if args.loop:
         from scripts.scheduler import _run_scheduler
         await _run_scheduler()
+    elif len(profiles) > 1:
+        profile_objs = [get_profile(p) for p in profiles]
+        results = await run_multi_profile_pipeline(
+            dry_run=args.dry_run, profiles=profile_objs,
+        )
+        print(f"\nMulti-Profile Pipeline Results:")
+        for r in results:
+            status = "SUCCESS" if r.success else "FAILED"
+            print(f"\n  [{r.profile_name.capitalize()}] {status}")
+            print(f"    Scanned:  {r.coins_scanned}")
+            print(f"    Analyzed: {r.coins_analyzed}")
+            print(f"    Traded:   {r.trades_executed}")
+            print(f"    Skipped:  {r.trades_skipped}")
+            if r.error:
+                print(f"    Error:    {r.error}")
     else:
-        result = await run_pipeline(dry_run=args.dry_run)
-        print(f"\nPipeline {'SUCCESS' if result.success else 'FAILED'}")
+        profile = get_profile(profiles[0])
+        result = await run_pipeline(dry_run=args.dry_run, profile=profile)
+        print(f"\nPipeline [{profile.label}] {'SUCCESS' if result.success else 'FAILED'}")
         print(f"  Scanned:  {result.coins_scanned}")
         print(f"  Analyzed: {result.coins_analyzed}")
         print(f"  Traded:   {result.trades_executed}")
@@ -106,31 +135,34 @@ async def cmd_status(args: argparse.Namespace) -> None:
 
     await init_db()
     is_paper = TRADING_MODE == "paper"
-    positions = await get_open_positions(is_paper=is_paper)
-    stats = await get_trading_stats(is_paper=is_paper)
+    profiles = _resolve_profiles(args)
 
-    mode = "PAPER" if is_paper else "LIVE"
-    print(f"\n{'='*60}")
-    print(f"  Futures Bot Status [{mode}]")
-    print(f"{'='*60}")
-    print(f"  Capital:          ${INITIAL_CAPITAL:.2f}")
-    print(f"  Total Trades:     {stats['total_trades']}")
-    print(f"  Open Positions:   {stats['open_positions']}")
-    print(f"  Closed:           {stats['closed_positions']}")
-    print(f"  Win Rate:         {stats['win_rate']:.1%}")
-    print(f"  Total P&L:        ${stats['total_realized_pnl']:.4f}")
-    print(f"  Unrealized P&L:   ${stats['unrealized_pnl']:.4f}")
-    print(f"  Margin In Use:    ${stats['total_margin_in_use']:.4f}")
-    print(f"  Funding Paid:     ${stats['total_funding_paid']:.4f}")
+    for profile_name in profiles:
+        positions = await get_open_positions(is_paper=is_paper, profile=profile_name)
+        stats = await get_trading_stats(is_paper=is_paper, profile=profile_name)
 
-    if positions:
-        print(f"\n  Open Positions:")
-        for p in positions:
-            pnl = p.get("unrealized_pnl", 0)
-            sign = "+" if pnl >= 0 else ""
-            lev = p.get("leverage", 1)
-            print(f"    - {p['symbol']:15s} {p['direction']:5s} {lev}x "
-                  f"@ {p['entry_price']:.4f} ({sign}${pnl:.4f})")
+        mode = "PAPER" if is_paper else "LIVE"
+        print(f"\n{'='*60}")
+        print(f"  Futures Bot Status [{mode}/{profile_name.capitalize()}]")
+        print(f"{'='*60}")
+        print(f"  Capital:          ${INITIAL_CAPITAL:.2f}")
+        print(f"  Total Trades:     {stats['total_trades']}")
+        print(f"  Open Positions:   {stats['open_positions']}")
+        print(f"  Closed:           {stats['closed_positions']}")
+        print(f"  Win Rate:         {stats['win_rate']:.1%}")
+        print(f"  Total P&L:        ${stats['total_realized_pnl']:.4f}")
+        print(f"  Unrealized P&L:   ${stats['unrealized_pnl']:.4f}")
+        print(f"  Margin In Use:    ${stats['total_margin_in_use']:.4f}")
+        print(f"  Funding Paid:     ${stats['total_funding_paid']:.4f}")
+
+        if positions:
+            print(f"\n  Open Positions:")
+            for p in positions:
+                pnl = p.get("unrealized_pnl", 0)
+                sign = "+" if pnl >= 0 else ""
+                lev = p.get("leverage", 1)
+                print(f"    - {p['symbol']:15s} {p['direction']:5s} {lev}x "
+                      f"@ {p['entry_price']:.4f} ({sign}${pnl:.4f})")
     print()
 
 
@@ -141,28 +173,31 @@ async def cmd_positions(args: argparse.Namespace) -> None:
 
     await init_db()
     is_paper = TRADING_MODE == "paper"
-    positions = await get_open_positions(is_paper=is_paper)
+    profiles = _resolve_profiles(args)
 
-    if not positions:
-        print("\nNo open positions.")
-        return
+    for profile_name in profiles:
+        positions = await get_open_positions(is_paper=is_paper, profile=profile_name)
 
-    mode = "PAPER" if is_paper else "LIVE"
-    print(f"\n{'='*80}")
-    print(f"  Open Positions [{mode}]")
-    print(f"{'='*80}\n")
+        if not positions:
+            print(f"\nNo open positions [{profile_name.capitalize()}].")
+            continue
 
-    for p in positions:
-        pnl = p.get("unrealized_pnl", 0)
-        sign = "+" if pnl >= 0 else ""
-        print(f"  {p['symbol']} | {p['direction']} {p['leverage']}x")
-        print(f"    Entry: ${p['entry_price']:.4f}  Current: ${p.get('current_price', 0):.4f}")
-        print(f"    Size: {p['size']:.4f}  Margin: ${p['margin']:.4f}")
-        print(f"    PnL: {sign}${pnl:.4f}  Funding: ${p.get('funding_paid', 0):.4f}")
-        print(f"    SL: ${p.get('sl_price', 0):.4f}  TP: ${p.get('tp_price', 0):.4f}")
-        print(f"    Liquidation: ${p.get('liquidation_price', 0):.4f}")
-        print(f"    Opened: {p['opened_at']}")
-        print()
+        mode = "PAPER" if is_paper else "LIVE"
+        print(f"\n{'='*80}")
+        print(f"  Open Positions [{mode}/{profile_name.capitalize()}]")
+        print(f"{'='*80}\n")
+
+        for p in positions:
+            pnl = p.get("unrealized_pnl", 0)
+            sign = "+" if pnl >= 0 else ""
+            print(f"  {p['symbol']} | {p['direction']} {p['leverage']}x")
+            print(f"    Entry: ${p['entry_price']:.4f}  Current: ${p.get('current_price', 0):.4f}")
+            print(f"    Size: {p['size']:.4f}  Margin: ${p['margin']:.4f}")
+            print(f"    PnL: {sign}${pnl:.4f}  Funding: ${p.get('funding_paid', 0):.4f}")
+            print(f"    SL: ${p.get('sl_price', 0):.4f}  TP: ${p.get('tp_price', 0):.4f}")
+            print(f"    Liquidation: ${p.get('liquidation_price', 0):.4f}")
+            print(f"    Opened: {p['opened_at']}")
+            print()
 
 
 async def cmd_history(args: argparse.Namespace) -> None:
@@ -172,23 +207,26 @@ async def cmd_history(args: argparse.Namespace) -> None:
 
     await init_db()
     is_paper = TRADING_MODE == "paper"
-    trades = await get_recent_trades(is_paper=is_paper, limit=args.limit)
+    profiles = _resolve_profiles(args)
 
-    if not trades:
-        print("\nNo trades yet.")
-        return
+    for profile_name in profiles:
+        trades = await get_recent_trades(is_paper=is_paper, profile=profile_name, limit=args.limit)
 
-    print(f"\n{'='*80}")
-    print(f"  Recent Trades (last {args.limit})")
-    print(f"{'='*80}\n")
+        if not trades:
+            print(f"\nNo trades yet [{profile_name.capitalize()}].")
+            continue
 
-    for t in trades:
-        rpnl = t.get("realized_pnl")
-        pnl_str = f"${rpnl:.4f}" if rpnl is not None else "open"
-        print(f"  [{t['created_at']}] {t['direction']:5s} {t['symbol']}")
-        print(f"    Size={t['size']:.4f}  Entry=${t['entry_price']:.4f}  "
-              f"Leverage={t['leverage']}x  P&L={pnl_str}")
-        print()
+        print(f"\n{'='*80}")
+        print(f"  Recent Trades [{profile_name.capitalize()}] (last {args.limit})")
+        print(f"{'='*80}\n")
+
+        for t in trades:
+            rpnl = t.get("realized_pnl")
+            pnl_str = f"${rpnl:.4f}" if rpnl is not None else "open"
+            print(f"  [{t['created_at']}] {t['direction']:5s} {t['symbol']}")
+            print(f"    Size={t['size']:.4f}  Entry=${t['entry_price']:.4f}  "
+                  f"Leverage={t['leverage']}x  P&L={pnl_str}")
+            print()
 
 
 def main() -> None:
@@ -205,6 +243,11 @@ def main() -> None:
     p_run.add_argument("--live", action="store_true", help="Force live trading mode")
     p_run.add_argument("--dry-run", action="store_true", help="Analyze without trading")
     p_run.add_argument("--loop", action="store_true", help="Start scheduler daemon")
+    p_run.add_argument(
+        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        default=None, help="Trading profile (default: neutral, --loop: all)",
+    )
+    p_run.add_argument("--multi", action="store_true", help="Run all 3 profiles (= --profile all)")
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan coins")
@@ -215,14 +258,26 @@ def main() -> None:
     p_analyze.add_argument("symbol", help="Trading pair (e.g. BTCUSDT or BTC/USDT:USDT)")
 
     # status
-    subparsers.add_parser("status", help="Show bot status")
+    p_status = subparsers.add_parser("status", help="Show bot status")
+    p_status.add_argument(
+        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        default="neutral", help="Profile to show (default: neutral)",
+    )
 
     # positions
-    subparsers.add_parser("positions", help="Show open positions detail")
+    p_positions = subparsers.add_parser("positions", help="Show open positions detail")
+    p_positions.add_argument(
+        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        default="neutral", help="Profile to show (default: neutral)",
+    )
 
     # history
     p_history = subparsers.add_parser("history", help="Show trade history")
     p_history.add_argument("--limit", type=int, default=20, help="Number of trades")
+    p_history.add_argument(
+        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        default="neutral", help="Profile to show (default: neutral)",
+    )
 
     # backtest
     p_bt = subparsers.add_parser("backtest", help="Run backtest")

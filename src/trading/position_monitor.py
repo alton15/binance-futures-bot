@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from config.settings import RISK, TRADING_MODE
 from src.clients.binance_rest import BinanceClient
@@ -16,10 +16,16 @@ from src.db.models import (
 )
 from src.notifications.notifier import notify_exit
 
+if TYPE_CHECKING:
+    from config.profiles import ProfileConfig
+
 logger = logging.getLogger(__name__)
 
 
-async def monitor_positions(client: BinanceClient) -> None:
+async def monitor_positions(
+    client: BinanceClient,
+    profile: ProfileConfig | None = None,
+) -> None:
     """Check all open positions and trigger exits as needed.
 
     Exit conditions:
@@ -32,17 +38,18 @@ async def monitor_positions(client: BinanceClient) -> None:
     7. Max hold time exceeded
     """
     is_paper = TRADING_MODE == "paper"
-    positions = await get_open_positions(is_paper=is_paper)
+    profile_name = profile.name if profile else "neutral"
+    positions = await get_open_positions(is_paper=is_paper, profile=profile_name)
 
     if not positions:
-        logger.debug("No open positions to monitor")
+        logger.debug("No open positions to monitor (profile=%s)", profile_name)
         return
 
-    logger.info("Monitoring %d open positions...", len(positions))
+    logger.info("Monitoring %d open positions (profile=%s)...", len(positions), profile_name)
 
     for pos in positions:
         try:
-            await _check_position(client, pos, is_paper)
+            await _check_position(client, pos, is_paper, profile)
         except Exception as e:
             logger.error("Error monitoring position %d: %s", pos["id"], e)
 
@@ -51,6 +58,7 @@ async def _check_position(
     client: BinanceClient,
     position: dict[str, Any],
     is_paper: bool,
+    profile: ProfileConfig | None = None,
 ) -> None:
     """Check a single position for exit conditions."""
     symbol = position["symbol"]
@@ -114,7 +122,7 @@ async def _check_position(
         funding_rate = 0
 
     # Check exit conditions
-    exit_reason = _should_exit(position, current_price, trailing_high, trailing_low, funding_rate)
+    exit_reason = _should_exit(position, current_price, trailing_high, trailing_low, funding_rate, profile)
 
     if exit_reason:
         logger.info(
@@ -135,14 +143,21 @@ def _should_exit(
     trailing_high: float,
     trailing_low: float,
     funding_rate: float,
+    profile: ProfileConfig | None = None,
 ) -> str | None:
-    """Determine if position should be exited."""
+    """Determine if position should be exited using profile-specific thresholds."""
     direction = position["direction"]
     entry_price = position["entry_price"]
     sl_price = position.get("sl_price", 0)
     tp_price = position.get("tp_price", 0)
     liq_price = position.get("liquidation_price", 0)
-    trailing_pct = position.get("trailing_stop_pct", RISK["trailing_stop_pct"])
+
+    trailing_pct = position.get("trailing_stop_pct")
+    if trailing_pct is None:
+        trailing_pct = profile.get_risk("trailing_stop_pct") if profile else RISK["trailing_stop_pct"]
+
+    funding_max = profile.get_risk("funding_rate_max") if profile else RISK["funding_rate_max"]
+    max_hold = profile.get_risk("max_hold_hours") if profile else RISK["max_hold_hours"]
 
     # 1. Stop loss
     if sl_price and sl_price > 0:
@@ -180,7 +195,7 @@ def _should_exit(
             return f"near_liquidation (distance={liq_distance:.1%})"
 
     # 5. Excessive funding rate
-    if abs(funding_rate) > RISK["funding_rate_max"] * 2:
+    if abs(funding_rate) > funding_max * 2:
         # Only exit if funding is against our position
         if (direction == "LONG" and funding_rate > 0) or \
            (direction == "SHORT" and funding_rate < 0):
@@ -195,8 +210,8 @@ def _should_exit(
                 opened_dt = opened_dt.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_held = (now - opened_dt).total_seconds() / 3600
-            if hours_held >= RISK["max_hold_hours"]:
-                return f"max_hold_time ({hours_held:.1f}h >= {RISK['max_hold_hours']}h)"
+            if hours_held >= max_hold:
+                return f"max_hold_time ({hours_held:.1f}h >= {max_hold}h)"
         except (ValueError, TypeError):
             pass
 
@@ -212,9 +227,10 @@ async def _execute_exit(
     is_paper: bool,
 ) -> None:
     """Execute position exit."""
+    profile_name = position.get("profile", "neutral")
     if is_paper:
         from src.trading.paper_trader import PaperTrader
-        trader = PaperTrader()
+        trader = PaperTrader(profile_name=profile_name)
     else:
         from src.trading.order_executor import OrderExecutor
         trader = OrderExecutor(client)
@@ -225,8 +241,8 @@ async def _execute_exit(
         actual_pnl = result.get("pnl", pnl)
         await notify_exit(position, actual_pnl, exit_reason)
         logger.info(
-            "Position %d closed: %s | P&L: $%.4f",
-            position["id"], exit_reason, actual_pnl,
+            "Position %d closed [%s]: %s | P&L: $%.4f",
+            position["id"], profile_name, exit_reason, actual_pnl,
         )
     else:
         logger.error(

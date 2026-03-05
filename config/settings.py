@@ -84,6 +84,13 @@ RISK = {
     "max_hold_hours": 72,             # Max 72h position hold
 }
 
+# -- Fees & Slippage -----------------------------------------------
+FEES = {
+    "taker_rate": 0.0004,      # 0.04% per side (market order)
+    "maker_rate": 0.0002,      # 0.02% per side (limit order)
+    "slippage_rate": 0.0001,   # 0.01% estimated slippage
+}
+
 # -- Leverage Tiers (volatility-based) -----------------------------
 LEVERAGE_TIERS = [
     {"max_volatility": 0.02, "max_leverage": 8},

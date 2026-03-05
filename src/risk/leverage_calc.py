@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from config.settings import RISK, LEVERAGE_TIERS, INITIAL_CAPITAL
+from config.settings import RISK, LEVERAGE_TIERS, INITIAL_CAPITAL, FEES
+
+if TYPE_CHECKING:
+    from config.profiles import ProfileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +27,16 @@ class PositionParams:
     liquidation_price: float
 
 
-def get_max_leverage(volatility_24h: float) -> int:
+def get_max_leverage(
+    volatility_24h: float,
+    profile: ProfileConfig | None = None,
+) -> int:
     """Get max allowed leverage based on daily volatility tier.
 
-    Tiers:
-        0-2%   -> 8x
-        2-4%   -> 5x
-        4-6%   -> 3x
-        6%+    -> 2x
+    Uses profile-specific leverage tiers when provided.
     """
-    for tier in LEVERAGE_TIERS:
+    tiers = profile.get_leverage_tiers() if profile else LEVERAGE_TIERS
+    for tier in tiers:
         if volatility_24h <= tier["max_volatility"]:
             return tier["max_leverage"]
     return 2
@@ -42,15 +46,19 @@ def calculate_leverage(
     volatility_24h: float,
     signal_strength: float,
     current_drawdown_pct: float = 0,
+    profile: ProfileConfig | None = None,
 ) -> int:
     """Calculate dynamic leverage.
 
     Formula: max_tier_leverage * signal_strength * (1 - drawdown_pct)
-    Clamped to [2, 8]
+    Clamped to profile's [leverage_min, leverage_max] range.
     """
-    max_lev = get_max_leverage(volatility_24h)
+    max_lev = get_max_leverage(volatility_24h, profile=profile)
     raw = max_lev * signal_strength * (1 - current_drawdown_pct)
-    return max(2, min(8, int(raw)))
+
+    lev_min = profile.leverage_min if profile else 2
+    lev_max = profile.leverage_max if profile else 8
+    return max(lev_min, min(lev_max, int(raw)))
 
 
 def calculate_position(
@@ -60,18 +68,19 @@ def calculate_position(
     leverage: int,
     capital: float = INITIAL_CAPITAL,
     volatility_24h: float = 0.03,
+    profile: ProfileConfig | None = None,
 ) -> PositionParams:
     """Calculate full position parameters.
 
-    Uses fixed-fraction risk model:
-    - Risk per trade = capital * risk_per_trade_pct (2%)
-    - SL distance = ATR * sl_atr_multiplier
-    - Position size = risk_amount / sl_distance
-    - TP distance = ATR * tp_atr_multiplier
+    Uses fixed-fraction risk model with profile-specific multipliers.
     """
-    risk_amount = capital * RISK["risk_per_trade_pct"]
-    sl_distance = atr * RISK["sl_atr_multiplier"]
-    tp_distance = atr * RISK["tp_atr_multiplier"]
+    risk_pct = profile.get_risk("risk_per_trade_pct") if profile else RISK["risk_per_trade_pct"]
+    sl_mult = profile.get_risk("sl_atr_multiplier") if profile else RISK["sl_atr_multiplier"]
+    tp_mult = profile.get_risk("tp_atr_multiplier") if profile else RISK["tp_atr_multiplier"]
+
+    risk_amount = capital * risk_pct
+    sl_distance = atr * sl_mult
+    tp_distance = atr * tp_mult
 
     if sl_distance <= 0 or entry_price <= 0:
         logger.warning("Invalid SL distance or entry price")
@@ -85,13 +94,16 @@ def calculate_position(
             liquidation_price=0,
         )
 
-    # Position size in base currency (inverse of SL distance)
-    position_size = risk_amount / sl_distance
+    # Position size in base currency (fee-adjusted)
+    # Actual risk = SL loss + round-trip fees, so include fees in risk budget
+    fee_cost_per_unit = entry_price * 2 * FEES["taker_rate"]
+    position_size = risk_amount / (sl_distance + fee_cost_per_unit)
     notional_value = position_size * entry_price
     margin_required = notional_value / leverage
 
-    # Cap margin at 15% of capital per position
-    max_margin_per_trade = capital * 0.15
+    # Cap margin per position (profile-configurable)
+    margin_pct = profile.get_risk("max_margin_per_trade_pct") if profile else 0.15
+    max_margin_per_trade = capital * margin_pct
     if margin_required > max_margin_per_trade:
         scale = max_margin_per_trade / margin_required
         position_size *= scale
@@ -107,9 +119,6 @@ def calculate_position(
         tp_price = entry_price - tp_distance
 
     # Liquidation price (simplified)
-    # LONG: liq = entry * (1 - 1/leverage + maintenance_margin)
-    # SHORT: liq = entry * (1 + 1/leverage - maintenance_margin)
-    # Using 0.5% maintenance margin approximation
     maint_margin = 0.005
     if direction == "LONG":
         liquidation_price = entry_price * (1 - (1 / leverage) + maint_margin)

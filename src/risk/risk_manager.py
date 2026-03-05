@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from config.settings import RISK, INITIAL_CAPITAL, TRADING_MODE
 from src.clients.binance_rest import BinanceClient
@@ -16,6 +16,9 @@ from src.db.models import (
     get_trading_stats,
     get_peak_capital,
 )
+
+if TYPE_CHECKING:
+    from config.profiles import ProfileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +43,12 @@ class RiskManager:
 
     Gates:
     1. Signal strength threshold
-    2. Max open positions (5)
+    2. Max open positions
     3. No duplicate symbol
-    4. Daily loss limit (5%)
-    5. Max drawdown (15%)
+    4. Daily loss limit
+    5. Max drawdown
     6. Available margin check
-    7. Total exposure limit (50%)
+    7. Total exposure limit
     8. Leverage tier validation
     9. Liquidation buffer (30%+ distance)
     10. Funding rate check (< 0.1%)
@@ -56,10 +59,19 @@ class RiskManager:
         client: BinanceClient,
         capital: float = INITIAL_CAPITAL,
         is_paper: bool = True,
+        profile: ProfileConfig | None = None,
     ) -> None:
         self.client = client
         self.capital = capital
         self.is_paper = is_paper
+        self.profile = profile
+        self._profile_name = profile.name if profile else "neutral"
+
+    def _risk(self, key: str) -> Any:
+        """Get risk parameter from profile or global RISK."""
+        if self.profile:
+            return self.profile.get_risk(key)
+        return RISK[key]
 
     async def check(
         self,
@@ -127,13 +139,13 @@ class RiskManager:
 
         if result.passed:
             logger.info(
-                "Risk check PASSED for %s %s (strength=%.2f)",
-                symbol, direction, signal_strength,
+                "Risk check PASSED for %s %s (strength=%.2f, profile=%s)",
+                symbol, direction, signal_strength, self._profile_name,
             )
         else:
             logger.info(
-                "Risk check REJECTED by '%s' for %s",
-                result.rejected_by, symbol,
+                "Risk check REJECTED by '%s' for %s (profile=%s)",
+                result.rejected_by, symbol, self._profile_name,
             )
 
         return result
@@ -142,7 +154,7 @@ class RiskManager:
         self, strength: float, result: RiskCheckResult
     ) -> None:
         """Gate 1: Signal strength must exceed minimum."""
-        threshold = RISK["signal_strength_min"]
+        threshold = self._risk("signal_strength_min")
         passed = strength >= threshold
         result.add_gate(
             "signal_strength",
@@ -154,9 +166,11 @@ class RiskManager:
 
     async def _gate_position_limit(self, result: RiskCheckResult) -> None:
         """Gate 2: Maximum open positions."""
-        positions = await get_open_positions(is_paper=self.is_paper)
+        positions = await get_open_positions(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         count = len(positions)
-        max_pos = RISK["max_open_positions"]
+        max_pos = self._risk("max_open_positions")
         passed = count < max_pos
         result.add_gate(
             "position_limit",
@@ -168,7 +182,9 @@ class RiskManager:
         self, symbol: str, result: RiskCheckResult
     ) -> None:
         """Gate 3: No duplicate position for same symbol."""
-        has_pos = await has_position_for_symbol(symbol, is_paper=self.is_paper)
+        has_pos = await has_position_for_symbol(
+            symbol, is_paper=self.is_paper, profile=self._profile_name,
+        )
         passed = not has_pos
         result.add_gate(
             "no_duplicate",
@@ -178,8 +194,10 @@ class RiskManager:
 
     async def _gate_daily_loss(self, result: RiskCheckResult) -> None:
         """Gate 4: Daily loss limit check."""
-        daily_pnl = await get_today_realized_pnl(is_paper=self.is_paper)
-        max_daily_loss = -self.capital * RISK["daily_loss_limit_pct"]
+        daily_pnl = await get_today_realized_pnl(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
+        max_daily_loss = -self.capital * self._risk("daily_loss_limit_pct")
         passed = daily_pnl > max_daily_loss
         result.add_gate(
             "daily_loss_limit",
@@ -191,15 +209,19 @@ class RiskManager:
 
     async def _gate_max_drawdown(self, result: RiskCheckResult) -> None:
         """Gate 5: Maximum drawdown from peak."""
-        stats = await get_trading_stats(is_paper=self.is_paper)
+        stats = await get_trading_stats(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         total_pnl = stats["total_realized_pnl"]
         current_capital = self.capital + total_pnl
-        peak = await get_peak_capital(is_paper=self.is_paper)
+        peak = await get_peak_capital(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         if peak < self.capital:
             peak = self.capital
 
         drawdown = (peak - current_capital) / peak if peak > 0 else 0
-        max_dd = RISK["max_drawdown_pct"]
+        max_dd = self._risk("max_drawdown_pct")
         passed = drawdown < max_dd
         result.add_gate(
             "max_drawdown",
@@ -213,9 +235,13 @@ class RiskManager:
         self, required_margin: float, result: RiskCheckResult
     ) -> None:
         """Gate 6: Available margin check."""
-        positions = await get_open_positions(is_paper=self.is_paper)
+        positions = await get_open_positions(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         used_margin = sum(p.get("margin", 0) for p in positions)
-        stats = await get_trading_stats(is_paper=self.is_paper)
+        stats = await get_trading_stats(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         current_capital = self.capital + stats["total_realized_pnl"]
         available = current_capital - used_margin
 
@@ -231,24 +257,24 @@ class RiskManager:
     async def _gate_total_exposure(
         self, new_margin: float, result: RiskCheckResult
     ) -> None:
-        """Gate 7: Total margin exposure limit.
-
-        Compares actual margin used (not notional) against capital.
-        Soft cap with 5% tolerance, and skips if remaining capacity < 5%.
-        """
-        positions = await get_open_positions(is_paper=self.is_paper)
+        """Gate 7: Total margin exposure limit."""
+        positions = await get_open_positions(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         used_margin = sum(p.get("margin", 0) for p in positions)
-        stats = await get_trading_stats(is_paper=self.is_paper)
+        stats = await get_trading_stats(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
         current_capital = self.capital + stats["total_realized_pnl"]
 
-        soft_cap = current_capital * RISK["max_exposure_pct"]       # 70%
-        hard_cap = current_capital * (RISK["max_exposure_pct"] + 0.05)  # 75%
-        min_remaining = current_capital * 0.05                      # 5%
+        max_exposure = self._risk("max_exposure_pct")
+        soft_cap = current_capital * max_exposure
+        hard_cap = current_capital * (max_exposure + 0.05)
+        min_remaining = current_capital * 0.05
 
         total_margin = used_margin + new_margin
         remaining = soft_cap - used_margin
 
-        # Skip if remaining capacity is too small to be worth it
         if remaining < min_remaining:
             result.add_gate(
                 "total_exposure", False,
@@ -269,11 +295,13 @@ class RiskManager:
         self, leverage: int, result: RiskCheckResult
     ) -> None:
         """Gate 8: Leverage within allowed range."""
-        passed = 2 <= leverage <= 8
+        lev_min = self.profile.leverage_min if self.profile else 2
+        lev_max = self.profile.leverage_max if self.profile else 8
+        passed = lev_min <= leverage <= lev_max
         result.add_gate(
             "leverage_valid",
             passed,
-            f"Leverage: {leverage}x (range: 2-8x)",
+            f"Leverage: {leverage}x (range: {lev_min}-{lev_max}x)",
         )
 
     def _gate_liquidation_buffer(
@@ -293,7 +321,7 @@ class RiskManager:
         else:
             distance = (liquidation_price - entry_or_sl) / entry_or_sl
 
-        min_buffer = RISK["liquidation_buffer_pct"]
+        min_buffer = self._risk("liquidation_buffer_pct")
         passed = distance >= min_buffer
         result.add_gate(
             "liquidation_buffer",
@@ -307,7 +335,7 @@ class RiskManager:
         self, funding_rate: float, result: RiskCheckResult
     ) -> None:
         """Gate 10: Funding rate check."""
-        max_rate = RISK["funding_rate_max"]
+        max_rate = self._risk("funding_rate_max")
         passed = abs(funding_rate) <= max_rate
         result.add_gate(
             "funding_rate",

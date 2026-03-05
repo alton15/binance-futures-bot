@@ -53,6 +53,7 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 fill_price REAL,
                 fill_size REAL,
                 is_paper INTEGER NOT NULL DEFAULT 1,
+                profile TEXT NOT NULL DEFAULT 'neutral',
                 signal_id INTEGER,
                 created_at TEXT DEFAULT (datetime('now')),
                 filled_at TEXT,
@@ -84,6 +85,7 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 exit_reason TEXT,
                 trade_id INTEGER,
                 is_paper INTEGER NOT NULL DEFAULT 1,
+                profile TEXT NOT NULL DEFAULT 'neutral',
                 opened_at TEXT DEFAULT (datetime('now')),
                 closed_at TEXT,
                 FOREIGN KEY (trade_id) REFERENCES trades(id)
@@ -101,6 +103,7 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 status TEXT NOT NULL DEFAULT 'pending',
                 exchange_order_id TEXT,
                 is_paper INTEGER NOT NULL DEFAULT 1,
+                profile TEXT NOT NULL DEFAULT 'neutral',
                 created_at TEXT DEFAULT (datetime('now')),
                 filled_at TEXT,
                 FOREIGN KEY (position_id) REFERENCES positions(id)
@@ -121,6 +124,7 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 total_trades INTEGER DEFAULT 0,
                 win_rate REAL DEFAULT 0,
                 is_paper INTEGER NOT NULL DEFAULT 1,
+                profile TEXT NOT NULL DEFAULT 'neutral',
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
@@ -166,12 +170,25 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(is_paper, status)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_trades_profile ON trades(profile)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_positions_paper ON positions(is_paper, status)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_positions_profile ON positions(profile)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_pnl_date ON pnl_snapshots(date)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_pnl_paper ON pnl_snapshots(is_paper)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_pnl_profile ON pnl_snapshots(profile)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_funding_symbol ON funding_payments(symbol)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_indicators_symbol ON indicator_snapshots(symbol, timeframe)")
+
+        # Migration: add profile column to existing tables
+        for table in ("trades", "positions", "orders", "pnl_snapshots"):
+            try:
+                await db.execute(
+                    f"ALTER TABLE {table} ADD COLUMN profile TEXT NOT NULL DEFAULT 'neutral'"
+                )
+            except Exception:
+                pass  # Column already exists
+
         await db.commit()
 
 
@@ -270,6 +287,7 @@ async def save_trade(
     status: str = "pending",
     is_paper: bool = True,
     signal_id: int | None = None,
+    profile: str = "neutral",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> int:
     """Save a trade record. Returns trade ID."""
@@ -277,10 +295,10 @@ async def save_trade(
         cursor = await db.execute(
             """INSERT INTO trades
                (symbol, direction, entry_price, size, cost, leverage, margin,
-                order_id, status, is_paper, signal_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                order_id, status, is_paper, signal_id, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (symbol, direction, entry_price, size, cost, leverage, margin,
-             order_id, status, int(is_paper), signal_id),
+             order_id, status, int(is_paper), signal_id, profile),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -325,6 +343,7 @@ async def open_position(
     trailing_stop_pct: float | None = None,
     trade_id: int | None = None,
     is_paper: bool = True,
+    profile: str = "neutral",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> int:
     """Open a new position. Returns position ID."""
@@ -334,14 +353,14 @@ async def open_position(
                (symbol, direction, entry_price, current_price, size, cost,
                 leverage, margin, liquidation_price, sl_price, tp_price,
                 trailing_stop_pct, trailing_high, trailing_low,
-                trade_id, is_paper)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                trade_id, is_paper, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (symbol, direction, entry_price, entry_price, size, cost,
              leverage, margin, liquidation_price, sl_price, tp_price,
              trailing_stop_pct,
              entry_price if direction == "LONG" else None,
              entry_price if direction == "SHORT" else None,
-             trade_id, int(is_paper)),
+             trade_id, int(is_paper), profile),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -364,14 +383,16 @@ async def close_position(
 
 
 async def get_open_positions(
-    is_paper: bool = True, db_path: Path = DEFAULT_DB_PATH
+    is_paper: bool = True,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> list[dict]:
-    """Get all open positions."""
+    """Get all open positions for a specific profile."""
     async with aiosqlite.connect(str(db_path)) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT * FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
@@ -421,13 +442,14 @@ async def update_position_funding(
 async def has_position_for_symbol(
     symbol: str,
     is_paper: bool = True,
+    profile: str = "neutral",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> bool:
-    """Check if there's already an open position for this symbol."""
+    """Check if there's already an open position for this symbol in this profile."""
     async with aiosqlite.connect(str(db_path)) as db:
         cursor = await db.execute(
-            "SELECT 1 FROM positions WHERE symbol=? AND status='open' AND is_paper=?",
-            (symbol, int(is_paper)),
+            "SELECT 1 FROM positions WHERE symbol=? AND status='open' AND is_paper=? AND profile=?",
+            (symbol, int(is_paper), profile),
         )
         return await cursor.fetchone() is not None
 
@@ -444,6 +466,7 @@ async def save_order(
     price: float | None = None,
     exchange_order_id: str = "",
     is_paper: bool = True,
+    profile: str = "neutral",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> int:
     """Save an order (SL/TP/trailing). Returns order ID."""
@@ -451,10 +474,10 @@ async def save_order(
         cursor = await db.execute(
             """INSERT INTO orders
                (symbol, position_id, order_type, side, price, size,
-                exchange_order_id, is_paper)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                exchange_order_id, is_paper, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (symbol, position_id, order_type, side, price, size,
-             exchange_order_id, int(is_paper)),
+             exchange_order_id, int(is_paper), profile),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -475,6 +498,7 @@ async def save_pnl_snapshot(
     total_trades: int = 0,
     win_rate: float = 0,
     is_paper: bool = True,
+    profile: str = "neutral",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     """Save a daily P&L snapshot."""
@@ -484,38 +508,42 @@ async def save_pnl_snapshot(
             """INSERT INTO pnl_snapshots
                (date, total_capital, daily_pnl, daily_pnl_pct,
                 cumulative_pnl, cumulative_pnl_pct, peak_capital,
-                drawdown_pct, open_positions, total_trades, win_rate, is_paper)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                drawdown_pct, open_positions, total_trades, win_rate, is_paper, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (today, total_capital, daily_pnl, daily_pnl_pct,
              cumulative_pnl, cumulative_pnl_pct, peak_capital,
-             drawdown_pct, open_positions, total_trades, win_rate, int(is_paper)),
+             drawdown_pct, open_positions, total_trades, win_rate, int(is_paper), profile),
         )
         await db.commit()
 
 
 async def get_peak_capital(
-    is_paper: bool = True, db_path: Path = DEFAULT_DB_PATH
+    is_paper: bool = True,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> float:
     """Get historical peak capital for drawdown calculation."""
     async with aiosqlite.connect(str(db_path)) as db:
         cursor = await db.execute(
-            "SELECT COALESCE(MAX(peak_capital), 0) FROM pnl_snapshots WHERE is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(MAX(peak_capital), 0) FROM pnl_snapshots WHERE is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         row = await cursor.fetchone()
         return row[0] if row else 0.0
 
 
 async def get_today_realized_pnl(
-    is_paper: bool = True, db_path: Path = DEFAULT_DB_PATH
+    is_paper: bool = True,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> float:
     """Get total realized P&L for today's closed positions."""
     today = datetime.now().strftime("%Y-%m-%d")
     async with aiosqlite.connect(str(db_path)) as db:
         cursor = await db.execute(
             """SELECT COALESCE(SUM(realized_pnl), 0) FROM positions
-               WHERE DATE(closed_at)=? AND is_paper=?""",
-            (today, int(is_paper)),
+               WHERE DATE(closed_at)=? AND is_paper=? AND profile=?""",
+            (today, int(is_paper), profile),
         )
         row = await cursor.fetchone()
         return row[0] if row else 0.0
@@ -588,33 +616,36 @@ async def save_indicator_snapshot(
 
 
 async def get_trading_stats(
-    is_paper: bool = True, db_path: Path = DEFAULT_DB_PATH
+    is_paper: bool = True,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> dict[str, Any]:
-    """Get overall trading statistics."""
+    """Get overall trading statistics for a specific profile."""
     async with aiosqlite.connect(str(db_path)) as db:
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM trades WHERE is_paper=?", (int(is_paper),)
+            "SELECT COUNT(*) FROM trades WHERE is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         total_trades = (await cursor.fetchone())[0]
 
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COUNT(*) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         open_count = (await cursor.fetchone())[0]
 
         cursor = await db.execute(
             """SELECT COUNT(*), SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END)
-               FROM positions WHERE status='closed' AND is_paper=?""",
-            (int(is_paper),),
+               FROM positions WHERE status='closed' AND is_paper=? AND profile=?""",
+            (int(is_paper), profile),
         )
         row = await cursor.fetchone()
         closed = row[0] if row else 0
         wins = row[1] if row and row[1] else 0
 
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status='closed' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status='closed' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         total_pnl = (await cursor.fetchone())[0]
 
@@ -624,8 +655,8 @@ async def get_trading_stats(
                       COALESCE(MAX(realized_pnl), 0),
                       COALESCE(MIN(realized_pnl), 0),
                       COALESCE(AVG(realized_pnl), 0)
-               FROM positions WHERE status='closed' AND is_paper=?""",
-            (int(is_paper),),
+               FROM positions WHERE status='closed' AND is_paper=? AND profile=?""",
+            (int(is_paper), profile),
         )
         pnl_row = await cursor.fetchone()
         total_gains = pnl_row[0] if pnl_row else 0
@@ -635,15 +666,15 @@ async def get_trading_stats(
         avg_pnl = pnl_row[4] if pnl_row else 0
 
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(unrealized_pnl), 0) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(unrealized_pnl), 0) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         unrealized = (await cursor.fetchone())[0]
 
         today = datetime.now().strftime("%Y-%m-%d")
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM trades WHERE DATE(created_at)=? AND is_paper=?",
-            (today, int(is_paper)),
+            "SELECT COUNT(*) FROM trades WHERE DATE(created_at)=? AND is_paper=? AND profile=?",
+            (today, int(is_paper), profile),
         )
         today_trades = (await cursor.fetchone())[0]
 
@@ -651,8 +682,8 @@ async def get_trading_stats(
             """SELECT COALESCE(SUM(realized_pnl), 0),
                       COUNT(*),
                       SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END)
-               FROM positions WHERE DATE(closed_at)=? AND status='closed' AND is_paper=?""",
-            (today, int(is_paper)),
+               FROM positions WHERE DATE(closed_at)=? AND status='closed' AND is_paper=? AND profile=?""",
+            (today, int(is_paper), profile),
         )
         today_row = await cursor.fetchone()
         today_pnl = today_row[0] if today_row else 0
@@ -661,15 +692,15 @@ async def get_trading_stats(
 
         # Total margin in use
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(margin), 0) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(margin), 0) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         total_margin = (await cursor.fetchone())[0]
 
         # Total funding paid
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(funding_paid), 0) FROM positions WHERE is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(funding_paid), 0) FROM positions WHERE is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         total_funding = (await cursor.fetchone())[0]
 
@@ -699,54 +730,57 @@ async def get_trading_stats(
 
 async def get_recent_trades(
     is_paper: bool = True,
+    profile: str = "neutral",
     limit: int = 10,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> list[dict]:
-    """Get recent trades."""
+    """Get recent trades for a specific profile."""
     async with aiosqlite.connect(str(db_path)) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT t.*, p.realized_pnl, p.status AS pos_status
                FROM trades t
                LEFT JOIN positions p ON t.id = p.trade_id
-               WHERE t.is_paper=?
+               WHERE t.is_paper=? AND t.profile=?
                ORDER BY t.created_at DESC LIMIT ?""",
-            (int(is_paper), limit),
+            (int(is_paper), profile, limit),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 
 async def get_risk_summary(
-    is_paper: bool = True, db_path: Path = DEFAULT_DB_PATH
+    is_paper: bool = True,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> dict:
-    """Get current risk exposure summary."""
+    """Get current risk exposure summary for a specific profile."""
     async with aiosqlite.connect(str(db_path)) as db:
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(margin), 0), COUNT(*) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(margin), 0), COUNT(*) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         row = await cursor.fetchone()
         total_margin = row[0] if row else 0
         open_count = row[1] if row else 0
 
         cursor = await db.execute(
-            "SELECT COALESCE(MAX(margin), 0) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(MAX(margin), 0) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         max_margin = (await cursor.fetchone())[0]
 
         today = datetime.now().strftime("%Y-%m-%d")
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE DATE(closed_at)=? AND is_paper=?",
-            (today, int(is_paper)),
+            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE DATE(closed_at)=? AND is_paper=? AND profile=?",
+            (today, int(is_paper), profile),
         )
         today_pnl = (await cursor.fetchone())[0]
 
         # Total notional exposure
         cursor = await db.execute(
-            "SELECT COALESCE(SUM(cost), 0) FROM positions WHERE status='open' AND is_paper=?",
-            (int(is_paper),),
+            "SELECT COALESCE(SUM(cost), 0) FROM positions WHERE status='open' AND is_paper=? AND profile=?",
+            (int(is_paper), profile),
         )
         total_exposure = (await cursor.fetchone())[0]
 

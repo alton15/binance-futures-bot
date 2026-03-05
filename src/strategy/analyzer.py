@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from config.settings import MARKET, SIGNALS
 from src.clients.binance_rest import BinanceClient
 from src.indicators.calculator import compute_indicators
 from src.indicators.signals import generate_signal, Signal
 from src.db.models import save_signal, save_indicator_snapshot
+
+if TYPE_CHECKING:
+    from config.profiles import ProfileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,7 @@ async def analyze_coin(
     client: BinanceClient,
     symbol: str,
     timeframe: str | None = None,
+    profile: ProfileConfig | None = None,
 ) -> dict[str, Any] | None:
     """Analyze a coin using technical indicators and multi-timeframe confirmation.
 
@@ -102,6 +106,10 @@ async def analyze_coin(
         stoch_d=indicators.stoch_d,
     )
 
+    # Use profile-specific signal thresholds if available
+    min_confirming = profile.get_signal("min_confirming") if profile else SIGNALS["min_confirming"]
+    min_strength = profile.get_signal("min_strength") if profile else SIGNALS["min_strength"]
+
     result = {
         "symbol": symbol,
         "signal_id": signal_id,
@@ -111,8 +119,8 @@ async def analyze_coin(
         "mtf_confirms": mtf_confirms,
         "is_actionable": (
             primary_signal.direction != "NEUTRAL"
-            and primary_signal.confirming_count >= SIGNALS["min_confirming"]
-            and adjusted_strength >= SIGNALS["min_strength"]
+            and primary_signal.confirming_count >= min_confirming
+            and adjusted_strength >= min_strength
             and mtf_confirms >= 1
         ),
         "close_price": indicators.close,

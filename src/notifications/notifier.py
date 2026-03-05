@@ -41,6 +41,15 @@ def _progress_bar(ratio: float, length: int = 10) -> str:
     return "\u2588" * filled + "\u2591" * empty
 
 
+def _profile_label(trade_or_position: dict[str, Any]) -> str:
+    """Build [MODE/Profile] label."""
+    is_paper = trade_or_position.get("is_paper", True)
+    mode = "PAPER" if is_paper else "LIVE"
+    profile = trade_or_position.get("profile", "neutral")
+    label_map = {"conservative": "Conservative", "neutral": "Neutral", "aggressive": "Aggressive"}
+    return f"{mode}/{label_map.get(profile, profile.capitalize())}"
+
+
 # -- Alerts Channel ------------------------------------------------
 
 
@@ -51,11 +60,10 @@ async def notify_trade(trade: dict[str, Any]) -> None:
     cost = trade.get("cost", 0)
     price = trade.get("price", 0)
     leverage = trade.get("leverage", 1)
-    is_paper = trade.get("is_paper", True)
-    mode = "PAPER" if is_paper else "LIVE"
+    label = _profile_label(trade)
 
     embed = {
-        "title": f"Trade Executed [{mode}]",
+        "title": f"Trade Executed [{label}]",
         "color": 0x00FF00 if direction == "LONG" else 0xFF6600,
         "fields": [
             {"name": "Symbol", "value": symbol, "inline": True},
@@ -81,9 +89,10 @@ async def notify_exit(
     direction = position.get("direction", "")
     symbol = position.get("symbol", "")
     leverage = position.get("leverage", 1)
+    label = _profile_label(position)
 
     embed = {
-        "title": f"Position Closed [{'WIN' if pnl >= 0 else 'LOSS'}]",
+        "title": f"Position Closed [{label}] [{'WIN' if pnl >= 0 else 'LOSS'}]",
         "color": color,
         "fields": [
             {"name": "Symbol", "value": symbol, "inline": True},
@@ -105,6 +114,7 @@ async def notify_status(
     stats: dict[str, Any],
     positions: list[dict],
     is_paper: bool = True,
+    profile_name: str = "neutral",
 ) -> None:
     """Send compact status update to reports channel."""
     mode = "PAPER" if is_paper else "LIVE"
@@ -129,7 +139,7 @@ async def notify_status(
         pos_text = "None"
 
     embed = {
-        "title": f"Status [{mode}]",
+        "title": f"Status [{mode}/{profile_name.capitalize()}]",
         "color": 0x2F3136,
         "fields": [
             {"name": "Wallet", "value": f"${wallet:.2f}", "inline": True},
@@ -149,11 +159,51 @@ async def notify_status(
     await _send_discord(DISCORD_WEBHOOK_REPORTS, [embed])
 
 
+async def notify_status_multi(
+    profiles_data: list[dict[str, Any]],
+) -> None:
+    """Send multi-profile status in a single message.
+
+    profiles_data: list of {"profile": str, "stats": dict, "positions": list}
+    """
+    embeds: list[dict] = []
+    for pd in profiles_data:
+        pname = pd["profile"]
+        stats = pd["stats"]
+        positions = pd["positions"]
+        pnl = stats.get("total_realized_pnl", 0)
+        unrealized = stats.get("unrealized_pnl", 0)
+        margin = stats.get("total_margin_in_use", 0)
+        wallet = INITIAL_CAPITAL + pnl + unrealized
+
+        embed = {
+            "title": f"{pname.capitalize()}",
+            "color": {"conservative": 0x2196F3, "neutral": 0x9E9E9E, "aggressive": 0xFF5722}.get(pname, 0x2F3136),
+            "fields": [
+                {"name": "Wallet", "value": f"${wallet:.2f}", "inline": True},
+                {"name": "P&L", "value": _fmt_pnl(pnl), "inline": True},
+                {"name": "Unrealized", "value": _fmt_pnl(unrealized), "inline": True},
+                {"name": "Win Rate", "value": f"{stats.get('win_rate', 0):.0%}", "inline": True},
+                {"name": "Trades", "value": str(stats.get("total_trades", 0)), "inline": True},
+                {"name": "Open", "value": str(len(positions)), "inline": True},
+            ],
+        }
+        embeds.append(embed)
+
+    if embeds:
+        embeds[0]["title"] = f"Multi-Profile Status | {embeds[0]['title']}"
+        embeds[-1]["timestamp"] = datetime.now(timezone.utc).isoformat()
+        embeds[-1]["footer"] = {"text": f"Initial Capital: ${INITIAL_CAPITAL:.0f} per profile"}
+
+    await _send_discord(DISCORD_WEBHOOK_REPORTS, embeds)
+
+
 async def notify_daily_report(
     stats: dict[str, Any],
     risk_data: dict[str, Any],
     recent_trades: list[dict],
     is_paper: bool = True,
+    profile_name: str = "neutral",
 ) -> None:
     """Send daily report with multiple embeds to reports channel."""
     mode = "PAPER" if is_paper else "LIVE"
@@ -173,7 +223,7 @@ async def notify_daily_report(
     # Embed 1: Overview
     pnl_bar = _progress_bar(win_rate, 10)
     overview = {
-        "title": f"Daily Report [{mode}] - {datetime.now().strftime('%Y-%m-%d')}",
+        "title": f"Daily Report [{mode}/{profile_name.capitalize()}] - {datetime.now().strftime('%Y-%m-%d')}",
         "description": (
             f"```\n"
             f" Capital    ${INITIAL_CAPITAL:.2f}\n"
@@ -245,3 +295,99 @@ async def notify_daily_report(
     }
 
     await _send_discord(DISCORD_WEBHOOK_REPORTS, [overview, pnl_embed, risk_embed, trades_embed])
+
+
+async def notify_daily_report_multi(
+    profiles_data: list[dict[str, Any]],
+) -> None:
+    """Send multi-profile daily comparison report.
+
+    profiles_data: list of {
+        "profile": str, "stats": dict, "risk_data": dict,
+        "recent_trades": list, "positions": list,
+    }
+    """
+    embeds: list[dict] = []
+    date_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Embed 1: Comparison table
+    rows = []
+    for pd in profiles_data:
+        pname = pd["profile"].capitalize()
+        stats = pd["stats"]
+        pnl = stats.get("total_realized_pnl", 0)
+        wallet = INITIAL_CAPITAL + pnl + stats.get("unrealized_pnl", 0)
+        wr = stats.get("win_rate", 0)
+        trades = stats.get("total_trades", 0)
+        rows.append(
+            f" {pname:13s} ${wallet:>8.2f}  {_fmt_pnl(pnl):>12s}  {wr:>5.0%}  {trades:>3d}"
+        )
+
+    comparison = {
+        "title": f"Multi-Profile Daily Report - {date_str}",
+        "description": (
+            "```\n"
+            f" {'Profile':13s} {'Wallet':>8s}  {'P&L':>12s}  {'WR':>5s}  {'#':>3s}\n"
+            f" {'─' * 48}\n"
+            + "\n".join(rows) + "\n"
+            "```"
+        ),
+        "color": 0x7C4DFF,
+    }
+    embeds.append(comparison)
+
+    # Embeds 2-4: Per-profile detail
+    color_map = {"conservative": 0x2196F3, "neutral": 0x9E9E9E, "aggressive": 0xFF5722}
+    for pd in profiles_data:
+        pname = pd["profile"]
+        stats = pd["stats"]
+        positions = pd.get("positions", [])
+        pnl = stats.get("total_realized_pnl", 0)
+
+        pos_text = "None"
+        if positions:
+            lines = []
+            for p in positions[:5]:
+                sym = p.get("symbol", "")[:15]
+                d = p.get("direction", "?")
+                lev = p.get("leverage", 1)
+                upnl = p.get("unrealized_pnl", 0)
+                lines.append(f"`{d}` {sym} {lev}x | {_fmt_pnl(upnl)}")
+            pos_text = "\n".join(lines)
+
+        detail = {
+            "title": pname.capitalize(),
+            "color": color_map.get(pname, 0x2F3136),
+            "fields": [
+                {"name": "P&L", "value": _fmt_pnl(pnl), "inline": True},
+                {"name": "Win Rate", "value": f"{stats.get('win_rate', 0):.0%}", "inline": True},
+                {"name": "Trades", "value": str(stats.get("total_trades", 0)), "inline": True},
+                {"name": "Best", "value": _fmt_pnl(stats.get("best_trade", 0)), "inline": True},
+                {"name": "Worst", "value": _fmt_pnl(stats.get("worst_trade", 0)), "inline": True},
+                {"name": "Margin", "value": f"${stats.get('total_margin_in_use', 0):.2f}", "inline": True},
+                {"name": "Open Positions", "value": pos_text, "inline": False},
+            ],
+        }
+        embeds.append(detail)
+
+    # Embed 5: Rankings
+    ranked = sorted(profiles_data, key=lambda x: x["stats"].get("total_realized_pnl", 0), reverse=True)
+    rank_lines = []
+    medals = ["🥇", "🥈", "🥉"]
+    for i, pd in enumerate(ranked):
+        pname = pd["profile"].capitalize()
+        pnl = pd["stats"].get("total_realized_pnl", 0)
+        wr = pd["stats"].get("win_rate", 0)
+        medal = medals[i] if i < len(medals) else f"{i+1}."
+        rank_lines.append(f"{medal} **{pname}**: {_fmt_pnl(pnl)} (WR: {wr:.0%})")
+
+    ranking = {
+        "title": "Rankings",
+        "description": "\n".join(rank_lines),
+        "color": 0xFFD700,
+        "footer": {"text": f"Futures Bot v0.1.0 | PAPER Mode | {INITIAL_CAPITAL:.0f} USDT per profile"},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    embeds.append(ranking)
+
+    await _send_discord(DISCORD_WEBHOOK_REPORTS, embeds)

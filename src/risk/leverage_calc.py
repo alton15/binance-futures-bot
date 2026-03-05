@@ -119,7 +119,7 @@ def calculate_position(
         tp_price = entry_price - tp_distance
 
     # Liquidation price (simplified)
-    maint_margin = 0.005
+    maint_margin = profile.get_risk("maint_margin_rate") if profile else RISK["maint_margin_rate"]
     if direction == "LONG":
         liquidation_price = entry_price * (1 - (1 / leverage) + maint_margin)
     else:

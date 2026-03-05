@@ -217,6 +217,34 @@ def test_fee_adjusted_position_sizing():
     assert params.position_size < raw_position_size
 
 
+def test_maint_margin_from_settings():
+    """Liquidation price should use maint_margin_rate from RISK settings."""
+    from config.settings import RISK
+    params = calculate_position(
+        entry_price=50000, atr=500, direction="LONG",
+        leverage=5, capital=100,
+    )
+    # Verify liquidation formula: entry * (1 - 1/lev + maint_margin_rate)
+    expected_liq = 50000 * (1 - 1/5 + RISK["maint_margin_rate"])
+    assert abs(params.liquidation_price - round(expected_liq, 4)) < 0.01
+
+
+def test_maint_margin_profile_override():
+    """Profile can override maint_margin_rate for different liquidation price."""
+    from config.profiles import ProfileConfig
+    custom = ProfileConfig(
+        name="custom", label="Custom",
+        risk={"maint_margin_rate": 0.01},  # 1% instead of 0.5%
+        leverage_min=2, leverage_max=8,
+    )
+    params = calculate_position(
+        entry_price=50000, atr=500, direction="LONG",
+        leverage=5, capital=100, profile=custom,
+    )
+    expected_liq = 50000 * (1 - 1/5 + 0.01)
+    assert abs(params.liquidation_price - round(expected_liq, 4)) < 0.01
+
+
 def test_fee_cost_is_deducted_from_risk():
     """Verify fee is included in risk budget: SL loss + fees <= risk_amount."""
     capital = 1000

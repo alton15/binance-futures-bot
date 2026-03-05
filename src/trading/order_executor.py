@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from config.settings import FEES
 from src.clients.binance_rest import BinanceClient
 from src.risk.leverage_calc import PositionParams
 from src.db.models import (
@@ -187,8 +188,13 @@ class OrderExecutor:
             else:
                 pnl = (position["entry_price"] - fill_price) * size
 
+            # Subtract funding paid + round-trip fees (matching paper_trader)
             funding_paid = position.get("funding_paid", 0)
-            net_pnl = pnl - abs(funding_paid)
+            entry_notional = position["entry_price"] * size
+            exit_notional = fill_price * size
+            fee_rate = FEES["taker_rate"] + FEES["slippage_rate"]
+            total_fees = (entry_notional + exit_notional) * fee_rate
+            net_pnl = pnl - abs(funding_paid) - total_fees
 
             await close_position(
                 position["id"], realized_pnl=net_pnl, exit_reason=exit_reason

@@ -148,8 +148,8 @@ SCALP = ProfileConfig(
         "daily_loss_limit_pct": 0.05,
         "max_drawdown_pct": 0.15,
         "signal_strength_min": 0.60,
-        "sl_atr_multiplier": 1.0,
-        "tp_atr_multiplier": 2.0,            # R:R 1:2 (기존 1.5)
+        "sl_atr_multiplier": 1.5,            # 1.5x ATR (노이즈 필터링)
+        "tp_atr_multiplier": 3.0,            # 3.0x ATR (R:R 1:2 유지)
         "trailing_stop_pct": 0.01,
         "max_hold_hours": 4,
         "liquidation_buffer_pct": 0.15,      # 15% (기존 20%)

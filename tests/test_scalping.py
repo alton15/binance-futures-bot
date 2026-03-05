@@ -31,8 +31,8 @@ class TestScalpProfile:
         assert SCALP.get_risk("max_exposure_pct") == 0.60
         assert SCALP.get_risk("daily_loss_limit_pct") == 0.05
         assert SCALP.get_risk("max_drawdown_pct") == 0.15
-        assert SCALP.get_risk("sl_atr_multiplier") == 1.0
-        assert SCALP.get_risk("tp_atr_multiplier") == 2.0
+        assert SCALP.get_risk("sl_atr_multiplier") == 1.5
+        assert SCALP.get_risk("tp_atr_multiplier") == 3.0
         assert SCALP.get_risk("trailing_stop_pct") == 0.01
         assert SCALP.get_risk("max_hold_hours") == 4
         assert SCALP.get_risk("liquidation_buffer_pct") == 0.15

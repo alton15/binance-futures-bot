@@ -35,6 +35,13 @@ def _fmt_pnl(val: float) -> str:
     return f"{sign}${val:.4f}"
 
 
+def _fmt_price(price: float) -> str:
+    """Format price with dynamic decimal places based on magnitude."""
+    if price < 100:
+        return f"{price:.4f}"
+    return f"{price:.2f}"
+
+
 def _progress_bar(ratio: float, length: int = 10) -> str:
     filled = int(ratio * length)
     empty = length - filled
@@ -133,7 +140,7 @@ async def notify_status(
             d = p.get("direction", "?")
             sym = p.get("symbol", "")[:20]
             lev = p.get("leverage", 1)
-            pos_lines.append(f"`{d}` {sym} {lev}x | {entry:.2f} > {curr:.2f} | {_fmt_pnl(upnl)}")
+            pos_lines.append(f"`{d}` {sym} {lev}x | {_fmt_price(entry)} > {_fmt_price(curr)} | {_fmt_pnl(upnl)}")
         pos_text = "\n".join(pos_lines)
     else:
         pos_text = "None"

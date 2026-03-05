@@ -65,7 +65,7 @@ binance-futures-bot/
 │   │   └── models.py            # 8개 테이블 + CRUD (aiosqlite)
 │   └── notifications/
 │       └── notifier.py          # Discord 웹훅 알림 (2채널)
-├── tests/                       # 138개 유닛 테스트 (12개 파일)
+├── tests/                       # 147개 유닛 테스트 (12개 파일)
 ├── Dockerfile
 ├── docker-compose.yml           # 2개 서비스 (bot + scalp)
 ├── pyproject.toml
@@ -209,7 +209,7 @@ caffeinate -i futuresbot run --paper --loop
   │  동시 분석 최대 3건 (세마포어)
   ↓
 [리스크] RISK CHECK (10-Gate, Scalp 프로필) ──────────────────────────
-  │  스캘핑 전용: max 8 포지션, 60% 노출, 5~15배 레버리지
+  │  스캘핑 전용: max 3 포지션, 60% 노출, 5~15배 레버리지
   ↓
 [매매] EXECUTE ───────────────────────────────────────────────────────
   ↓
@@ -255,7 +255,7 @@ short_score > long_score → SHORT
 | Gate | 검증 항목 | Conservative | Neutral | Aggressive | Scalp |
 |:----:|----------|:-----------:|:-------:|:----------:|:-----:|
 | 1 | 신호 강도 | ≥ 0.70 | ≥ 0.60 | ≥ 0.55 | ≥ 0.55 |
-| 2 | 오픈 포지션 수 | ≤ 3개 | ≤ 5개 | ≤ 5개 | ≤ 8개 |
+| 2 | 오픈 포지션 수 | ≤ 3개 | ≤ 5개 | ≤ 5개 | ≤ 3개 |
 | 3 | 중복 심볼 | 없음 | 없음 | 없음 | 없음 |
 | 4 | 일일 손실 | ≤ 4% | ≤ 6% | ≤ 8% | ≤ 5% |
 | 5 | 최대 드로다운 | ≤ 10% | ≤ 20% | ≤ 25% | ≤ 15% |
@@ -336,7 +336,7 @@ notional   = 포지션 크기 × 진입가
 | 항목 | Conservative | Neutral | Aggressive | Scalp |
 |------|:-----------:|:-------:|:----------:|:-----:|
 | 건당 리스크 | 1.5% ($1.5) | 2% ($2) | 3% ($3) | 1% ($1) |
-| 동시 포지션 | 3개 | 5개 | 5개 | 8개 |
+| 동시 포지션 | 3개 | 5개 | 5개 | 3개 |
 | 총 마진 노출 | 40% | 60% | 70% | 60% |
 | 일일 손실 한도 | 4% ($4) | 6% ($6) | 8% ($8) | 5% ($5) |
 | 최대 드로다운 | 10% | 20% | 25% | 15% |
@@ -446,7 +446,7 @@ Shape: `VM.Standard.A1.Flex` (ARM), Image: Ubuntu 22.04
 ## 테스트
 
 ```bash
-# 전체 테스트 (138개)
+# 전체 테스트 (147개)
 pytest tests/ -v
 
 # 개별 모듈
@@ -454,7 +454,7 @@ pytest tests/test_db_models.py -v           # DB 모델 (10개)
 pytest tests/test_indicators.py -v          # 기술적 지표 (5개)
 pytest tests/test_signals.py -v             # 신호 생성 + NEUTRAL 데드존 (19개)
 pytest tests/test_coin_scanner.py -v        # 코인 스캐너 (4개)
-pytest tests/test_leverage_calc.py -v       # 레버리지 + 수수료 모델링 (20개)
+pytest tests/test_leverage_calc.py -v       # 레버리지 + 수수료 모델링 (28개)
 pytest tests/test_risk_manager.py -v        # 10-gate 리스크 (40+개)
 pytest tests/test_profiles.py -v            # 프로필 불변성 + 폴백 (6개)
 pytest tests/test_notifier.py -v            # 알림 포맷팅 (7개)

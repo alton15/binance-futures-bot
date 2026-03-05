@@ -27,7 +27,7 @@ class TestScalpProfile:
 
     def test_scalp_risk_values(self):
         assert SCALP.get_risk("risk_per_trade_pct") == 0.01
-        assert SCALP.get_risk("max_open_positions") == 8
+        assert SCALP.get_risk("max_open_positions") == 3
         assert SCALP.get_risk("max_exposure_pct") == 0.60
         assert SCALP.get_risk("daily_loss_limit_pct") == 0.05
         assert SCALP.get_risk("max_drawdown_pct") == 0.15
@@ -320,6 +320,53 @@ class TestScalpPipeline:
 
         # Symbol should be cleaned up after analysis
         assert "ETHUSDT" not in pipeline._active_symbols
+
+    @pytest.mark.asyncio
+    async def test_pipeline_volatility_uses_atr_ratio(self):
+        """Pipeline should estimate volatility as ATR/close_price, not abs(pct_change)."""
+        from src.scalping.pipeline import ScalpPipeline
+        pipeline = ScalpPipeline()
+
+        event = SpikeEvent("BTCUSDT", "volume_spike", 3.0, 50000.0, 1e9, time.time())
+
+        mock_analysis = {
+            "is_actionable": True,
+            "direction": "LONG",
+            "strength": 0.75,
+            "confirming_count": 5,
+            "mtf_confirms": 2,
+            "close_price": 50000.0,
+            "atr": 500.0,  # ATR/close = 500/50000 = 0.01 (1%)
+            "signal_id": "test-signal",
+        }
+
+        with patch('src.scalping.pipeline.analyze_coin', new_callable=AsyncMock, return_value=mock_analysis), \
+             patch('src.scalping.pipeline.BinanceClient') as MockClient, \
+             patch('src.scalping.pipeline.calculate_leverage') as mock_lev, \
+             patch('src.scalping.pipeline.calculate_position') as mock_pos, \
+             patch('src.scalping.pipeline.RiskManager') as MockRisk, \
+             patch('src.scalping.pipeline.get_trading_stats', new_callable=AsyncMock, return_value={"total_realized_pnl": 0}), \
+             patch('src.scalping.pipeline.get_peak_capital', new_callable=AsyncMock, return_value=100):
+            # Setup mocks
+            mock_client_instance = AsyncMock()
+            mock_client_instance.fetch_ticker = AsyncMock(return_value={"quoteVolume": 1e9, "percentage": 5.0})
+            mock_client_instance.fetch_funding_rate = AsyncMock(return_value={"fundingRate": 0.0001})
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_lev.return_value = 10
+            mock_pos_result = MagicMock()
+            mock_pos_result.position_size = 0  # Stop pipeline early
+            mock_pos.return_value = mock_pos_result
+
+            await pipeline._run_analysis("BTC/USDT:USDT", event)
+
+            # Verify volatility passed to calculate_leverage is ATR/close (0.01), not abs(pct_change) (0.05)
+            mock_lev.assert_called_once()
+            call_kwargs = mock_lev.call_args
+            volatility_arg = call_kwargs.kwargs.get("volatility_24h") or call_kwargs[1].get("volatility_24h") or call_kwargs[0][0]
+            # ATR/close = 500/50000 = 0.01, should NOT be abs(5/100) = 0.05
+            assert abs(volatility_arg - 0.01) < 0.001, f"Expected ATR/close ~0.01, got {volatility_arg}"
 
     @pytest.mark.asyncio
     async def test_pipeline_cleans_up_on_error(self):

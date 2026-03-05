@@ -143,7 +143,7 @@ SCALP = ProfileConfig(
     label="Scalp",
     risk={
         "risk_per_trade_pct": 0.01,          # 1% (높은 레버리지 보상)
-        "max_open_positions": 8,
+        "max_open_positions": 3,
         "max_exposure_pct": 0.60,
         "daily_loss_limit_pct": 0.05,
         "max_drawdown_pct": 0.15,

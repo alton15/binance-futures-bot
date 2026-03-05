@@ -91,18 +91,19 @@ class ScalpPipeline:
                 )
                 return
 
-            # --- Step 2: Estimate volatility from price data ---
-            # Use a rough volatility estimate from recent price data
+            # --- Step 2: Estimate volatility and funding rate ---
+            # Use ATR/Price ratio from analysis (already computed from OHLCV)
+            atr_val = analysis.get("atr", 0) or 0
+            close_val = analysis.get("close_price", 0) or 0
+            volatility_24h = max(atr_val / close_val, 0.01) if close_val > 0 else 0.03
+
             try:
                 ticker = await client.fetch_ticker(symbol)
                 vol_24h = float(ticker.get("quoteVolume", 0) or 0)
-                pct_change = float(ticker.get("percentage", 0) or 0) / 100
-                volatility_24h = max(abs(pct_change), 0.01)
                 funding = await client.fetch_funding_rate(symbol)
                 funding_rate = float(funding.get("fundingRate", 0) or 0)
             except Exception as e:
                 logger.warning("Failed to fetch ticker data for %s: %s", symbol, e)
-                volatility_24h = 0.03
                 funding_rate = 0
                 vol_24h = event.volume_24h
 

@@ -1,7 +1,7 @@
 """Tests for leverage calculator."""
 
 import pytest
-from config.profiles import CONSERVATIVE, NEUTRAL, AGGRESSIVE
+from config.profiles import CONSERVATIVE, NEUTRAL, AGGRESSIVE, SCALP
 from config.settings import FEES
 from src.risk.leverage_calc import (
     get_max_leverage,
@@ -266,3 +266,79 @@ def test_fee_cost_is_deducted_from_risk():
     risk_amount = capital * 0.03  # default neutral risk_per_trade
 
     assert total_risk <= risk_amount * 1.001  # allow tiny float rounding
+
+
+# -- SCALP profile leverage tests ------------------------------------
+
+
+def test_scalp_max_leverage_low_volatility():
+    """SCALP profile: low volatility -> max 15x."""
+    lev = get_max_leverage(0.01, profile=SCALP)
+    assert lev == 15
+
+
+def test_scalp_max_leverage_mid_volatility():
+    """SCALP profile: mid volatility -> max 12x."""
+    lev = get_max_leverage(0.03, profile=SCALP)
+    assert lev == 12
+
+
+def test_scalp_max_leverage_high_volatility():
+    """SCALP profile: high volatility -> max 8x."""
+    lev = get_max_leverage(0.05, profile=SCALP)
+    assert lev == 8
+
+
+def test_scalp_max_leverage_extreme_volatility():
+    """SCALP profile: extreme volatility -> max 5x."""
+    lev = get_max_leverage(0.10, profile=SCALP)
+    assert lev == 5
+
+
+def test_scalp_calculate_leverage_clamped():
+    """SCALP profile: leverage clamped to [5, 15]."""
+    lev = calculate_leverage(
+        volatility_24h=0.01,   # scalp tier = 15x
+        signal_strength=0.9,
+        current_drawdown_pct=0,
+        profile=SCALP,
+    )
+    # 15 * 0.9 * 1.0 = 13.5 -> int(13.5) = 13
+    assert lev == 13
+    assert 5 <= lev <= 15
+
+
+def test_scalp_leverage_floor():
+    """SCALP profile: minimum leverage is 5."""
+    lev = calculate_leverage(
+        volatility_24h=0.10,   # scalp tier = 5x
+        signal_strength=0.3,
+        current_drawdown_pct=0.5,
+        profile=SCALP,
+    )
+    # 5 * 0.3 * 0.5 = 0.75 -> clamped to 5
+    assert lev == 5
+
+
+def test_scalp_position_sizing():
+    """SCALP profile: 1% risk with 1.5x ATR SL."""
+    params = calculate_position(
+        entry_price=50000, atr=500, direction="LONG",
+        leverage=10, capital=100, profile=SCALP,
+    )
+    assert params.leverage == 10
+    assert params.position_size > 0
+    # SL = 50000 - 1.5 * 500 = 49250
+    assert params.sl_price == round(50000 - 1.5 * 500, 4)
+    # TP = 50000 + 3.0 * 500 = 51500
+    assert params.tp_price == round(50000 + 3.0 * 500, 4)
+
+
+def test_scalp_margin_cap():
+    """SCALP profile: margin capped at 10% of capital."""
+    params = calculate_position(
+        entry_price=50000, atr=50, direction="LONG",
+        leverage=5, capital=100, profile=SCALP,
+    )
+    # max_margin_per_trade_pct = 0.10 -> max $10 margin
+    assert params.margin_required <= 100 * 0.10 + 0.01  # float tolerance

@@ -36,11 +36,14 @@ class ScalpMonitor:
         self._profile_name = self._profile.name
         self._ws_client = BinanceWSClient()
 
-        # Currently monitored symbols
+        # Currently monitored symbols (ccxt format)
         self._monitored_symbols: set[str] = set()
 
-        # Position cache: symbol -> list[position_dict]
+        # Position cache: ccxt_symbol -> list[position_dict]
         self._positions: dict[str, list[dict[str, Any]]] = {}
+
+        # Reverse mapping: bare Binance symbol -> ccxt symbol (e.g. "BTCUSDT" -> "BTC/USDT:USDT")
+        self._bare_to_ccxt: dict[str, str] = {}
 
         # Trailing high/low tracking: position_id -> (trailing_high, trailing_low)
         self._trailing: dict[int, tuple[float, float]] = {}
@@ -75,11 +78,15 @@ class ScalpMonitor:
         )
 
         async with self._lock:
-            # Rebuild position cache
+            # Rebuild position cache and bare-to-ccxt mapping
             self._positions.clear()
+            self._bare_to_ccxt.clear()
             for pos in positions:
                 symbol = pos["symbol"]
                 self._positions.setdefault(symbol, []).append(pos)
+                # Build reverse mapping: "BTC/USDT:USDT" -> "BTCUSDT"
+                bare = symbol.replace("/", "").replace(":USDT", "")
+                self._bare_to_ccxt[bare] = symbol
 
                 # Initialize trailing tracking
                 pos_id = pos["id"]
@@ -133,7 +140,9 @@ class ScalpMonitor:
 
         Checks all open positions for exit conditions on every tick.
         """
-        symbol = data.get("s", "")
+        bare_symbol = data.get("s", "")
+        # Convert bare Binance symbol (BTCUSDT) to ccxt format (BTC/USDT:USDT)
+        symbol = self._bare_to_ccxt.get(bare_symbol, "")
         mark_price_str = data.get("p", "0")
 
         try:

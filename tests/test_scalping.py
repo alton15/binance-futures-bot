@@ -367,13 +367,14 @@ class TestScalpMonitor:
             "opened_at": "2026-03-05T10:00:00",
         }
 
-        # Simulate position data
+        # Simulate position data with bare-to-ccxt mapping
         async with monitor._lock:
             monitor._positions["BTC/USDT:USDT"] = [position]
+            monitor._bare_to_ccxt["BTCUSDT"] = "BTC/USDT:USDT"
             monitor._trailing[1] = (50000.0, 50000.0)
 
-        # markPrice below stop loss
-        mark_data = {"s": "BTC/USDT:USDT", "p": "49400.0"}
+        # markPrice below stop loss (Binance WS sends bare symbol)
+        mark_data = {"s": "BTCUSDT", "p": "49400.0"}
 
         with patch('src.scalping.monitor._execute_exit', new_callable=AsyncMock) as mock_exit, \
              patch('src.scalping.monitor.update_position_price', new_callable=AsyncMock):
@@ -409,10 +410,11 @@ class TestScalpMonitor:
 
         async with monitor._lock:
             monitor._positions["ETH/USDT:USDT"] = [position]
+            monitor._bare_to_ccxt["ETHUSDT"] = "ETH/USDT:USDT"
             monitor._trailing[2] = (3000.0, 3000.0)
 
-        # Normal price - no exit
-        mark_data = {"s": "ETH/USDT:USDT", "p": "3010.0"}
+        # Normal price - no exit (Binance WS sends bare symbol)
+        mark_data = {"s": "ETHUSDT", "p": "3010.0"}
 
         with patch('src.scalping.monitor._execute_exit', new_callable=AsyncMock) as mock_exit, \
              patch('src.scalping.monitor.update_position_price', new_callable=AsyncMock):
@@ -424,7 +426,7 @@ class TestScalpMonitor:
         from src.scalping.monitor import ScalpMonitor
         monitor = ScalpMonitor()
 
-        mark_data = {"s": "UNKNOWN/USDT:USDT", "p": "100.0"}
+        mark_data = {"s": "UNKNOWNUSDT", "p": "100.0"}
 
         with patch('src.scalping.monitor._execute_exit', new_callable=AsyncMock) as mock_exit:
             await monitor._on_mark_price(mark_data)
@@ -436,8 +438,8 @@ class TestScalpMonitor:
         monitor = ScalpMonitor()
 
         # Invalid/zero price should be ignored
-        mark_data = {"s": "BTC/USDT:USDT", "p": "0"}
+        mark_data = {"s": "BTCUSDT", "p": "0"}
         await monitor._on_mark_price(mark_data)
 
-        mark_data = {"s": "BTC/USDT:USDT", "p": "invalid"}
+        mark_data = {"s": "BTCUSDT", "p": "invalid"}
         await monitor._on_mark_price(mark_data)

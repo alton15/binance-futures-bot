@@ -12,3 +12,18 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  scalp:
+    build: .
+    container_name: binance-futures-scalp
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: futuresbot run --scalp --paper
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3

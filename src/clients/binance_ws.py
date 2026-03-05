@@ -47,6 +47,21 @@ class BinanceWSClient:
         self._callbacks["markPrice"] = callback
         await self._connect_combined(streams, "markPrice")
 
+    async def subscribe_all_mini_tickers(
+        self,
+        callback: Callable[[list[dict]], Coroutine],
+    ) -> None:
+        """Subscribe to !miniTicker@arr - all symbols mini ticker stream.
+
+        Receives all futures symbols' 24h stats every ~1 second.
+        Callback receives: [{"s": "BTCUSDT", "c": "50000", "q": "123456", ...}, ...]
+        """
+        url = f"{self.base_url}/!miniTicker@arr"
+        self._callbacks["miniTicker"] = callback
+        self._running = True
+        self._reconnect_attempts["miniTicker"] = 0
+        asyncio.create_task(self._listen(url, "miniTicker"))
+
     async def subscribe_book_ticker(
         self,
         symbols: list[str],

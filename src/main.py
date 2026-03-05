@@ -38,6 +38,12 @@ async def cmd_run(args: argparse.Namespace) -> None:
     elif args.live:
         os.environ["TRADING_MODE"] = "live"
 
+    # Scalp mode: separate WebSocket event-driven process
+    if args.scalp:
+        from scripts.scalp_runner import run_scalp
+        await run_scalp()
+        return
+
     from config.profiles import get_profile, ALL_PROFILES
     from src.strategy.orchestrator import run_pipeline, run_multi_profile_pipeline
 
@@ -244,10 +250,11 @@ def main() -> None:
     p_run.add_argument("--dry-run", action="store_true", help="Analyze without trading")
     p_run.add_argument("--loop", action="store_true", help="Start scheduler daemon")
     p_run.add_argument(
-        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        "--profile", choices=["conservative", "neutral", "aggressive", "scalp", "all"],
         default=None, help="Trading profile (default: neutral, --loop: all)",
     )
     p_run.add_argument("--multi", action="store_true", help="Run all 3 profiles (= --profile all)")
+    p_run.add_argument("--scalp", action="store_true", help="Run scalping mode (WebSocket event-driven, 3m)")
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan coins")
@@ -260,14 +267,14 @@ def main() -> None:
     # status
     p_status = subparsers.add_parser("status", help="Show bot status")
     p_status.add_argument(
-        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        "--profile", choices=["conservative", "neutral", "aggressive", "scalp", "all"],
         default="neutral", help="Profile to show (default: neutral)",
     )
 
     # positions
     p_positions = subparsers.add_parser("positions", help="Show open positions detail")
     p_positions.add_argument(
-        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        "--profile", choices=["conservative", "neutral", "aggressive", "scalp", "all"],
         default="neutral", help="Profile to show (default: neutral)",
     )
 
@@ -275,7 +282,7 @@ def main() -> None:
     p_history = subparsers.add_parser("history", help="Show trade history")
     p_history.add_argument("--limit", type=int, default=20, help="Number of trades")
     p_history.add_argument(
-        "--profile", choices=["conservative", "neutral", "aggressive", "all"],
+        "--profile", choices=["conservative", "neutral", "aggressive", "scalp", "all"],
         default="neutral", help="Profile to show (default: neutral)",
     )
 

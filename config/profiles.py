@@ -142,17 +142,17 @@ SCALP = ProfileConfig(
     name="scalp",
     label="Scalp",
     risk={
-        "risk_per_trade_pct": 0.015,
+        "risk_per_trade_pct": 0.01,          # 1% (높은 레버리지 보상)
         "max_open_positions": 8,
         "max_exposure_pct": 0.60,
         "daily_loss_limit_pct": 0.05,
         "max_drawdown_pct": 0.15,
         "signal_strength_min": 0.60,
         "sl_atr_multiplier": 1.0,
-        "tp_atr_multiplier": 1.5,
+        "tp_atr_multiplier": 2.0,            # R:R 1:2 (기존 1.5)
         "trailing_stop_pct": 0.01,
         "max_hold_hours": 4,
-        "liquidation_buffer_pct": 0.20,
+        "liquidation_buffer_pct": 0.15,      # 15% (기존 20%)
         "max_margin_per_trade_pct": 0.10,
         "analysis_cooldown_seconds": 60,
     },
@@ -161,13 +161,13 @@ SCALP = ProfileConfig(
         "min_strength": 0.60,
     },
     leverage_tiers=[
-        {"max_volatility": 0.02, "max_leverage": 8},
-        {"max_volatility": 0.04, "max_leverage": 6},
-        {"max_volatility": 0.06, "max_leverage": 4},
-        {"max_volatility": float("inf"), "max_leverage": 3},
+        {"max_volatility": 0.02, "max_leverage": 15},
+        {"max_volatility": 0.04, "max_leverage": 12},
+        {"max_volatility": 0.06, "max_leverage": 8},
+        {"max_volatility": float("inf"), "max_leverage": 5},
     ],
-    leverage_min=3,
-    leverage_max=8,
+    leverage_min=5,
+    leverage_max=15,
 )
 
 # Swing profiles for scheduled pipeline (scan → analyze → trade)

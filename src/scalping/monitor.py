@@ -45,6 +45,9 @@ class ScalpMonitor:
         # Trailing high/low tracking: position_id -> (trailing_high, trailing_low)
         self._trailing: dict[int, tuple[float, float]] = {}
 
+        # Track positions that have received their first tick DB update
+        self._first_updated: set[int] = set()
+
         # Lock for position updates
         self._lock = asyncio.Lock()
 
@@ -87,11 +90,12 @@ class ScalpMonitor:
                         pos.get("trailing_low") or entry,
                     )
 
-            # Clean up trailing for closed positions
+            # Clean up trailing and first-tick tracking for closed positions
             active_ids = {pos["id"] for pos in positions}
             stale_ids = [pid for pid in self._trailing if pid not in active_ids]
             for pid in stale_ids:
                 del self._trailing[pid]
+            self._first_updated -= self._first_updated - active_ids
 
         # Determine which symbols need monitoring
         current_symbols = set(self._positions.keys())
@@ -191,9 +195,10 @@ class ScalpMonitor:
         self._trailing[pos_id] = (trailing_high, trailing_low)
 
         # Update position price in DB (throttled - only when significant change)
-        # We don't want to write to DB every second for every position
+        # Force update on first tick so DB always has an initial price
+        is_first_tick = pos_id not in self._first_updated
         last_price = position.get("current_price", 0) or 0
-        if last_price == 0 or abs(current_price - last_price) / max(last_price, 1e-8) > 0.0005:
+        if is_first_tick or last_price == 0 or abs(current_price - last_price) / max(last_price, 1e-8) > 0.0005:
             await update_position_price(
                 pos_id,
                 current_price=current_price,
@@ -202,6 +207,10 @@ class ScalpMonitor:
                 trailing_high=trailing_high,
                 trailing_low=trailing_low,
             )
+            if is_first_tick:
+                self._first_updated.add(pos_id)
+                # Update cached position to prevent redundant writes
+                position["current_price"] = current_price
 
         # Check exit conditions using the shared _should_exit logic
         exit_reason = _should_exit(

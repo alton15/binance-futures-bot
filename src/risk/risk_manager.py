@@ -193,11 +193,15 @@ class RiskManager:
         )
 
     async def _gate_daily_loss(self, result: RiskCheckResult) -> None:
-        """Gate 4: Daily loss limit check."""
+        """Gate 4: Daily loss limit check (uses dynamic capital like Gates 5/6)."""
         daily_pnl = await get_today_realized_pnl(
             is_paper=self.is_paper, profile=self._profile_name,
         )
-        max_daily_loss = -self.capital * self._risk("daily_loss_limit_pct")
+        stats = await get_trading_stats(
+            is_paper=self.is_paper, profile=self._profile_name,
+        )
+        current_capital = self.capital + stats["total_realized_pnl"]
+        max_daily_loss = -current_capital * self._risk("daily_loss_limit_pct")
         passed = daily_pnl > max_daily_loss
         result.add_gate(
             "daily_loss_limit",
@@ -268,12 +272,11 @@ class RiskManager:
         current_capital = self.capital + stats["total_realized_pnl"]
 
         max_exposure = self._risk("max_exposure_pct")
-        soft_cap = current_capital * max_exposure
-        hard_cap = current_capital * (max_exposure + 0.05)
+        exposure_cap = current_capital * max_exposure
         min_remaining = current_capital * 0.05
 
         total_margin = used_margin + new_margin
-        remaining = soft_cap - used_margin
+        remaining = exposure_cap - used_margin
 
         if remaining < min_remaining:
             result.add_gate(
@@ -282,13 +285,13 @@ class RiskManager:
             )
             return
 
-        passed = total_margin <= hard_cap
+        passed = total_margin <= exposure_cap
         result.add_gate(
             "total_exposure",
             passed,
-            f"Margin: ${total_margin:.2f} / ${soft_cap:.2f} (hard cap: ${hard_cap:.2f})"
+            f"Margin: ${total_margin:.2f} / ${exposure_cap:.2f}"
             if passed else
-            f"Margin limit: ${total_margin:.2f} > ${hard_cap:.2f}",
+            f"Margin limit: ${total_margin:.2f} > ${exposure_cap:.2f}",
         )
 
     def _gate_leverage_valid(

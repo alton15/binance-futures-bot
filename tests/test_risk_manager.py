@@ -243,6 +243,123 @@ async def test_aggressive_accepts_valid_signal(mock_peak, mock_stats, mock_pnl, 
     assert gate1["passed"] is True
 
 
+# -- Gate 4: Dynamic capital tests ------------------------------------
+
+
+@patch("src.risk.risk_manager.get_open_positions", new_callable=AsyncMock, return_value=[])
+@patch("src.risk.risk_manager.has_position_for_symbol", new_callable=AsyncMock, return_value=False)
+@patch("src.risk.risk_manager.get_today_realized_pnl", new_callable=AsyncMock, return_value=-7.5)
+@patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 50})
+@patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=150)
+async def test_gate4_dynamic_capital_allows_more_loss(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
+    """Gate 4 should use dynamic capital (100 + 50 PnL = 150) for daily loss limit.
+
+    With initial capital=100 and 8% limit: loss limit = -$8.00
+    With dynamic capital=150: loss limit = -$12.00
+    Daily loss of -$7.50 should pass with dynamic capital.
+    """
+    client = AsyncMock()
+    rm = RiskManager(client, capital=100, is_paper=True)
+    result = await rm.check(
+        symbol="BTC/USDT:USDT",
+        direction="LONG",
+        signal_strength=0.8,
+        position_params=_default_params(),
+        funding_rate=0.0001,
+    )
+    gate4 = next(g for g in result.gate_results if g["name"] == "daily_loss_limit")
+    assert gate4["passed"] is True
+    # Dynamic capital = 100 + 50 = 150, limit = -150 * 0.08 = -12.00
+    assert "-12.00" in gate4["reason"]
+
+
+@patch("src.risk.risk_manager.get_open_positions", new_callable=AsyncMock, return_value=[])
+@patch("src.risk.risk_manager.has_position_for_symbol", new_callable=AsyncMock, return_value=False)
+@patch("src.risk.risk_manager.get_today_realized_pnl", new_callable=AsyncMock, return_value=-13.0)
+@patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 50})
+@patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=150)
+async def test_gate4_dynamic_capital_blocks_excessive_loss(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
+    """Gate 4 should block when daily loss exceeds dynamic capital limit.
+
+    Dynamic capital = 100 + 50 = 150, limit = -$12.00
+    Daily loss of -$13.00 exceeds limit -> blocked.
+    """
+    client = AsyncMock()
+    rm = RiskManager(client, capital=100, is_paper=True)
+    result = await rm.check(
+        symbol="BTC/USDT:USDT",
+        direction="LONG",
+        signal_strength=0.8,
+        position_params=_default_params(),
+    )
+    assert result.passed is False
+    assert result.rejected_by == "daily_loss_limit"
+
+
+# -- Gate 7: Soft cap tests -------------------------------------------
+
+
+@patch("src.risk.risk_manager.get_open_positions", new_callable=AsyncMock)
+@patch("src.risk.risk_manager.has_position_for_symbol", new_callable=AsyncMock, return_value=False)
+@patch("src.risk.risk_manager.get_today_realized_pnl", new_callable=AsyncMock, return_value=0)
+@patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 0})
+@patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=100)
+async def test_gate7_rejects_above_soft_cap(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
+    """Gate 7 should reject when total margin exceeds soft cap (exposure_cap).
+
+    Capital=100, max_exposure=70%, soft_cap=70.
+    Used margin 60 + new 15 = 75 > 70 -> rejected.
+    Previously hard_cap allowed up to 75, now soft_cap blocks at 70.
+    """
+    mock_positions.return_value = [{"margin": 60}]
+    client = AsyncMock()
+    rm = RiskManager(client, capital=100, is_paper=True)
+    params = _default_params()
+    params = PositionParams(
+        leverage=params.leverage,
+        position_size=params.position_size,
+        notional_value=params.notional_value,
+        margin_required=15,  # 60 + 15 = 75 > 70 soft cap
+        sl_price=params.sl_price,
+        tp_price=params.tp_price,
+        liquidation_price=params.liquidation_price,
+    )
+    result = await rm.check(
+        symbol="BTC/USDT:USDT",
+        direction="LONG",
+        signal_strength=0.8,
+        position_params=params,
+        funding_rate=0.0001,
+    )
+    gate7 = next(g for g in result.gate_results if g["name"] == "total_exposure")
+    assert gate7["passed"] is False
+
+
+@patch("src.risk.risk_manager.get_open_positions", new_callable=AsyncMock)
+@patch("src.risk.risk_manager.has_position_for_symbol", new_callable=AsyncMock, return_value=False)
+@patch("src.risk.risk_manager.get_today_realized_pnl", new_callable=AsyncMock, return_value=0)
+@patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 0})
+@patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=100)
+async def test_gate7_passes_within_soft_cap(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
+    """Gate 7 should pass when total margin is within soft cap.
+
+    Capital=100, max_exposure=70%, soft_cap=70.
+    Used margin 50 + new 16.67 = 66.67 <= 70 -> passes.
+    """
+    mock_positions.return_value = [{"margin": 50}]
+    client = AsyncMock()
+    rm = RiskManager(client, capital=100, is_paper=True)
+    result = await rm.check(
+        symbol="BTC/USDT:USDT",
+        direction="LONG",
+        signal_strength=0.8,
+        position_params=_default_params(),
+        funding_rate=0.0001,
+    )
+    gate7 = next(g for g in result.gate_results if g["name"] == "total_exposure")
+    assert gate7["passed"] is True
+
+
 # -- Fee-related tests ----------------------------------------------
 
 

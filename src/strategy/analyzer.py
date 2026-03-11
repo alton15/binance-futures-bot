@@ -22,6 +22,7 @@ async def analyze_coin(
     symbol: str,
     timeframe: str | None = None,
     profile: ProfileConfig | None = None,
+    confirm_timeframes: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Analyze a coin using technical indicators and multi-timeframe confirmation.
 
@@ -53,7 +54,8 @@ async def analyze_coin(
 
     # Multi-timeframe confirmation
     mtf_confirms = 0
-    for tf in MARKET.get("confirm_timeframes", []):
+    mtf_list = confirm_timeframes or MARKET.get("confirm_timeframes", [])
+    for tf in mtf_list:
         try:
             tf_ohlcv = await client.fetch_ohlcv(symbol, tf, limit=250)
             tf_indicators = compute_indicators(tf_ohlcv, symbol, tf)

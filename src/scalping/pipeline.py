@@ -78,6 +78,7 @@ class ScalpPipeline:
                 client, symbol,
                 timeframe=self._primary_tf,
                 profile=profile,
+                confirm_timeframes=self._confirm_tfs,
             )
             if analysis is None:
                 logger.debug("Analysis returned None for %s", symbol)

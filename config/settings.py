@@ -79,8 +79,8 @@ RISK = {
     "min_volatility_pct": 1.5,        # 1.5% minimum daily volatility
     "max_spread_pct": 0.05,           # 0.05% max spread
     "maint_margin_rate": 0.005,       # 0.5% maintenance margin rate
-    "sl_atr_multiplier": 1.5,         # SL = entry +/- 1.5 * ATR
-    "tp_atr_multiplier": 3.0,         # TP = entry +/- 3.0 * ATR
+    "sl_atr_multiplier": 2.0,         # SL = entry +/- 2.0 * ATR
+    "tp_atr_multiplier": 4.0,         # TP = entry +/- 4.0 * ATR
     "trailing_stop_pct": 0.02,        # 2% trailing stop
     "max_hold_hours": 72,             # Max 72h position hold
 }

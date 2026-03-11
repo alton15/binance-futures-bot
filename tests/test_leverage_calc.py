@@ -162,8 +162,8 @@ def test_conservative_leverage_floor():
     assert lev == 1
 
 
-def test_conservative_position_wider_sl():
-    """Conservative SL multiplier (2.0) vs neutral (1.5): wider SL."""
+def test_swing_profiles_same_sl_multiplier():
+    """All swing profiles use 2.0x ATR SL multiplier."""
     cons_params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
         leverage=3, capital=100, profile=CONSERVATIVE,
@@ -172,22 +172,28 @@ def test_conservative_position_wider_sl():
         entry_price=50000, atr=500, direction="LONG",
         leverage=3, capital=100, profile=NEUTRAL,
     )
-    # Conservative SL is farther from entry (wider stop)
-    assert cons_params.sl_price < neut_params.sl_price
-
-
-def test_aggressive_same_sl_as_neutral():
-    """Aggressive SL multiplier now equals neutral (1.5 ATR)."""
     aggr_params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
-        leverage=5, capital=100, profile=AGGRESSIVE,
+        leverage=3, capital=100, profile=AGGRESSIVE,
+    )
+    # All swing profiles: SL = 2.0 * 500 = 1000, price = 49000
+    assert cons_params.sl_price == neut_params.sl_price == aggr_params.sl_price
+    assert cons_params.sl_price == 49000.0
+
+
+def test_scalp_wider_sl_than_swing():
+    """Scalp SL multiplier (2.5x) is wider than swing (2.0x)."""
+    scalp_params = calculate_position(
+        entry_price=50000, atr=500, direction="LONG",
+        leverage=10, capital=100, profile=SCALP,
     )
     neut_params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
-        leverage=5, capital=100, profile=NEUTRAL,
+        leverage=10, capital=100, profile=NEUTRAL,
     )
-    # Same SL multiplier (1.5) -> same SL price
-    assert aggr_params.sl_price == neut_params.sl_price
+    # Scalp SL = 2.5 * 500 = 1250, price = 48750
+    # Neutral SL = 2.0 * 500 = 1000, price = 49000
+    assert scalp_params.sl_price < neut_params.sl_price
 
 
 # -- Fee-adjusted position sizing tests -----------------------------
@@ -198,7 +204,7 @@ def test_fee_adjusted_position_sizing():
     capital = 1000
     entry_price = 50000
     atr = 500
-    sl_mult = 1.5
+    sl_mult = 2.0
     risk_pct = 0.03
 
     params = calculate_position(
@@ -259,11 +265,11 @@ def test_fee_cost_is_deducted_from_risk():
         capital=capital,
     )
 
-    sl_distance = atr * 1.5  # default neutral SL multiplier
+    sl_distance = atr * 2.0  # default SL multiplier (updated)
     sl_loss = params.position_size * sl_distance
     fee_cost = params.position_size * entry_price * 2 * FEES["taker_rate"]
     total_risk = sl_loss + fee_cost
-    risk_amount = capital * 0.03  # default neutral risk_per_trade
+    risk_amount = capital * 0.03  # default risk_per_trade
 
     assert total_risk <= risk_amount * 1.001  # allow tiny float rounding
 
@@ -321,17 +327,17 @@ def test_scalp_leverage_floor():
 
 
 def test_scalp_position_sizing():
-    """SCALP profile: 1% risk with 1.5x ATR SL."""
+    """SCALP profile: 1% risk with 2.5x ATR SL."""
     params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
         leverage=10, capital=100, profile=SCALP,
     )
     assert params.leverage == 10
     assert params.position_size > 0
-    # SL = 50000 - 1.5 * 500 = 49250
-    assert params.sl_price == round(50000 - 1.5 * 500, 4)
-    # TP = 50000 + 3.0 * 500 = 51500
-    assert params.tp_price == round(50000 + 3.0 * 500, 4)
+    # SL = 50000 - 2.5 * 500 = 48750
+    assert params.sl_price == round(50000 - 2.5 * 500, 4)
+    # TP = 50000 + 4.0 * 500 = 52000
+    assert params.tp_price == round(50000 + 4.0 * 500, 4)
 
 
 def test_scalp_margin_cap():

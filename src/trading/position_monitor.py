@@ -181,7 +181,7 @@ def _should_exit(
                 return f"trailing_stop (high={trailing_high:.4f} trigger={trail_trigger:.4f})"
         elif direction == "SHORT" and trailing_low > 0:
             trail_trigger = trailing_low * (1 + trailing_pct)
-            if current_price >= trail_trigger:
+            if current_price >= trail_trigger and current_price < entry_price:
                 return f"trailing_stop (low={trailing_low:.4f} trigger={trail_trigger:.4f})"
 
     # 4. Near liquidation (within 5% of liquidation price)

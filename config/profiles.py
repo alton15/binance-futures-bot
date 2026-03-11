@@ -57,8 +57,8 @@ CONSERVATIVE = ProfileConfig(
         "max_drawdown_pct": 0.10,
         "signal_strength_min": 0.70,
         "sl_atr_multiplier": 2.0,
-        "tp_atr_multiplier": 3.0,
-        "trailing_stop_pct": 0.015,
+        "tp_atr_multiplier": 4.0,
+        "trailing_stop_pct": 0.02,
         "max_hold_hours": 48,
         "liquidation_buffer_pct": 0.30,
         "max_margin_per_trade_pct": 0.12,
@@ -86,8 +86,8 @@ NEUTRAL = ProfileConfig(
         "daily_loss_limit_pct": 0.06,
         "max_drawdown_pct": 0.20,
         "signal_strength_min": 0.65,
-        "sl_atr_multiplier": 1.5,
-        "tp_atr_multiplier": 3.0,
+        "sl_atr_multiplier": 2.0,
+        "tp_atr_multiplier": 4.0,
         "trailing_stop_pct": 0.02,
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.20,
@@ -117,8 +117,8 @@ AGGRESSIVE = ProfileConfig(
         "daily_loss_limit_pct": 0.08,
         "max_drawdown_pct": 0.25,
         "signal_strength_min": 0.60,
-        "sl_atr_multiplier": 1.5,
-        "tp_atr_multiplier": 3.0,
+        "sl_atr_multiplier": 2.0,
+        "tp_atr_multiplier": 4.0,
         "trailing_stop_pct": 0.025,
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.15,
@@ -148,9 +148,9 @@ SCALP = ProfileConfig(
         "daily_loss_limit_pct": 0.05,
         "max_drawdown_pct": 0.15,
         "signal_strength_min": 0.60,
-        "sl_atr_multiplier": 1.5,            # 1.5x ATR (노이즈 필터링)
-        "tp_atr_multiplier": 3.0,            # 3.0x ATR (R:R 1:2 유지)
-        "trailing_stop_pct": 0.01,
+        "sl_atr_multiplier": 2.5,            # 2.5x ATR (노이즈 필터링 강화)
+        "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
+        "trailing_stop_pct": 0.015,          # 1.5% (기존 1.0% → 노이즈 방지)
         "max_hold_hours": 4,
         "liquidation_buffer_pct": 0.15,      # 15% (기존 20%)
         "max_margin_per_trade_pct": 0.10,

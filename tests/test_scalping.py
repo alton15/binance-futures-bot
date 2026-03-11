@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,9 +32,9 @@ class TestScalpProfile:
         assert SCALP.get_risk("max_exposure_pct") == 0.60
         assert SCALP.get_risk("daily_loss_limit_pct") == 0.05
         assert SCALP.get_risk("max_drawdown_pct") == 0.15
-        assert SCALP.get_risk("sl_atr_multiplier") == 1.5
-        assert SCALP.get_risk("tp_atr_multiplier") == 3.0
-        assert SCALP.get_risk("trailing_stop_pct") == 0.01
+        assert SCALP.get_risk("sl_atr_multiplier") == 2.5
+        assert SCALP.get_risk("tp_atr_multiplier") == 4.0
+        assert SCALP.get_risk("trailing_stop_pct") == 0.015
         assert SCALP.get_risk("max_hold_hours") == 4
         assert SCALP.get_risk("liquidation_buffer_pct") == 0.15
         assert SCALP.get_risk("max_margin_per_trade_pct") == 0.10
@@ -453,7 +454,7 @@ class TestScalpMonitor:
             "leverage": 5,
             "margin": 600.0,
             "profile": "scalp",
-            "opened_at": "2026-03-05T10:00:00",
+            "opened_at": datetime.now(timezone.utc).isoformat(),
         }
 
         async with monitor._lock:

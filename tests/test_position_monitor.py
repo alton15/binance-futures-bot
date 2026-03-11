@@ -60,21 +60,19 @@ def test_short_trailing_stop_in_profit():
     assert "trailing_stop" in reason
 
 
-def test_short_trailing_stop_above_entry():
-    """SHORT trailing stop should trigger even when price went above entry.
+def test_short_trailing_stop_not_above_entry():
+    """SHORT trailing stop should NOT trigger when price is above entry (loss zone).
 
-    This is the bug fix: previously the condition `current_price < entry_price`
-    prevented trailing stop from working when SHORT position's price went
-    above entry and then pulled back from a new low.
+    Symmetric with LONG: trailing stop only locks in profits, SL handles losses.
+    When price goes above entry for SHORT, the SL should handle the exit.
     """
     pos = _base_position("SHORT", entry_price=50000)
-    # Price went up to 51000, then dropped to 49000 (trailing_low), then rose back
     trailing_low = 49000
-    trail_trigger = 49000 * 1.02  # 49980
-    current_price = 50100  # above entry AND above trigger -> should trigger
+    current_price = 50100  # above entry (loss zone for SHORT) -> SL handles this
     reason = _should_exit(pos, current_price, 51000, trailing_low, 0)
-    assert reason is not None
-    assert "trailing_stop" in reason
+    # Trailing stop should NOT trigger in loss zone
+    if reason:
+        assert "trailing_stop" not in reason
 
 
 def test_short_trailing_stop_no_trigger_within_range():

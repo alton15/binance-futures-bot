@@ -100,13 +100,16 @@ def test_calculate_position_margin():
 
 
 def test_calculate_position_zero_atr():
+    """Zero ATR uses minimum SL distance (0.3% of price) instead of rejecting."""
     params = calculate_position(
         entry_price=50000,
         atr=0,
         direction="LONG",
         leverage=5,
     )
-    assert params.position_size == 0
+    # Min SL distance = 50000 * 0.003 = 150
+    assert params.position_size > 0
+    assert params.sl_price == 50000 - 150  # 49850
 
 
 # -- Profile-specific leverage tests --------------------------------

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,18 @@ class PositionParams:
     sl_price: float
     tp_price: float
     liquidation_price: float
+
+
+def _price_precision(price: float) -> int:
+    """Determine rounding precision based on price magnitude.
+
+    Low-priced coins need more decimals to preserve SL/TP distances.
+    """
+    if price <= 0:
+        return 8
+    # Number of decimals needed: e.g. $0.0002 → 8, $1.5 → 6, $50000 → 2
+    magnitude = -math.floor(math.log10(price))
+    return max(2, min(8, magnitude + 4))
 
 
 def get_max_leverage(
@@ -82,6 +95,16 @@ def calculate_position(
     sl_distance = atr * sl_mult
     tp_distance = atr * tp_mult
 
+    # Minimum SL distance: at least 0.3% of entry price
+    min_sl_distance = entry_price * 0.003
+    if sl_distance < min_sl_distance:
+        logger.info(
+            "SL distance %.8f too small for price %.8f, using minimum %.8f",
+            sl_distance, entry_price, min_sl_distance,
+        )
+        sl_distance = min_sl_distance
+        tp_distance = max(tp_distance, min_sl_distance * (tp_mult / sl_mult))
+
     if sl_distance <= 0 or entry_price <= 0:
         logger.warning("Invalid SL distance or entry price")
         return PositionParams(
@@ -125,18 +148,21 @@ def calculate_position(
     else:
         liquidation_price = entry_price * (1 + (1 / leverage) - maint_margin)
 
+    # Dynamic precision: use enough decimals to preserve SL/TP distance
+    price_precision = _price_precision(entry_price)
+
     params = PositionParams(
         leverage=leverage,
         position_size=round(position_size, 6),
         notional_value=round(notional_value, 4),
         margin_required=round(margin_required, 4),
-        sl_price=round(sl_price, 4),
-        tp_price=round(tp_price, 4),
-        liquidation_price=round(liquidation_price, 4),
+        sl_price=round(sl_price, price_precision),
+        tp_price=round(tp_price, price_precision),
+        liquidation_price=round(liquidation_price, price_precision),
     )
 
     logger.info(
-        "Position calc: %s %dx size=%.6f notional=$%.2f margin=$%.2f SL=%.4f TP=%.4f liq=%.4f",
+        "Position calc: %s %dx size=%.6f notional=$%.2f margin=$%.2f SL=%s TP=%s liq=%s",
         direction, leverage, params.position_size, params.notional_value,
         params.margin_required, params.sl_price, params.tp_price,
         params.liquidation_price,

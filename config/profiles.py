@@ -59,7 +59,9 @@ CONSERVATIVE = ProfileConfig(
         "signal_strength_min": 0.70,
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.02,
+        "trailing_stop_pct": 0.03,              # 2% → 3% (크립토 변동성 대비)
+        "trailing_activation_atr": 1.0,          # 1x ATR 수익 후 트레일링 활성화
+        "trailing_atr_multiplier": 1.5,          # ATR 기반 동적 트레일링 거리
         "max_hold_hours": 48,
         "liquidation_buffer_pct": 0.30,
         "max_margin_per_trade_pct": 0.12,
@@ -67,6 +69,10 @@ CONSERVATIVE = ProfileConfig(
     signals={
         "min_confirming": 5,
         "min_strength": 0.65,
+        "macd_opposition_penalty": 1.0,          # MACD 반대 시 거부 (강도 × 1.0 감쇄)
+        "low_volume_threshold": 0.5,             # 0.5x avg 미만 거부
+        "low_volume_penalty": 1.0,               # 저볼륨 시 거부
+        "bb_conflict_penalty": 0.20,             # BB 충돌 시 강도 -20%
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 3},
@@ -89,7 +95,9 @@ NEUTRAL = ProfileConfig(
         "signal_strength_min": 0.65,
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.02,
+        "trailing_stop_pct": 0.03,              # 2% → 3%
+        "trailing_activation_atr": 1.0,          # 1x ATR 수익 후 활성화
+        "trailing_atr_multiplier": 1.5,          # ATR 기반 동적 트레일링
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.20,
         "max_margin_per_trade_pct": 0.15,
@@ -97,6 +105,10 @@ NEUTRAL = ProfileConfig(
     signals={
         "min_confirming": 4,
         "min_strength": 0.60,
+        "macd_opposition_penalty": 0.30,         # MACD 반대 시 강도 -30%
+        "low_volume_threshold": 0.5,             # 0.5x avg 미만
+        "low_volume_penalty": 0.15,              # 저볼륨 시 강도 -15%
+        "bb_conflict_penalty": 0.10,             # BB 충돌 시 강도 -10%
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 6},
@@ -120,7 +132,9 @@ AGGRESSIVE = ProfileConfig(
         "signal_strength_min": 0.60,
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.025,
+        "trailing_stop_pct": 0.035,             # 2.5% → 3.5%
+        "trailing_activation_atr": 0.8,          # 0.8x ATR (더 빨리 활성화)
+        "trailing_atr_multiplier": 1.2,          # 타이트한 ATR 트레일링
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.15,
         "max_margin_per_trade_pct": 0.15,
@@ -128,6 +142,10 @@ AGGRESSIVE = ProfileConfig(
     signals={
         "min_confirming": 4,
         "min_strength": 0.55,
+        "macd_opposition_penalty": 0.15,         # MACD 반대 시 강도 -15% (느슨)
+        "low_volume_threshold": 0.0,             # 볼륨 필터 없음
+        "low_volume_penalty": 0.0,
+        "bb_conflict_penalty": 0.0,              # BB 필터 없음
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 10},
@@ -151,7 +169,9 @@ SCALP = ProfileConfig(
         "signal_strength_min": 0.60,
         "sl_atr_multiplier": 2.5,            # 2.5x ATR (노이즈 필터링 강화)
         "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
-        "trailing_stop_pct": 0.015,          # 1.5% (기존 1.0% → 노이즈 방지)
+        "trailing_stop_pct": 0.025,          # 1.5% → 2.5% (3분봉 노이즈 대비)
+        "trailing_activation_atr": 0.8,      # 0.8x ATR (스캘프는 빠른 활성화)
+        "trailing_atr_multiplier": 1.0,      # 1x ATR 트레일링 거리
         "max_hold_hours": 4,
         "liquidation_buffer_pct": 0.20,      # 20% (15x 레버리지 안전성 확보)
         "max_margin_per_trade_pct": 0.10,
@@ -160,6 +180,10 @@ SCALP = ProfileConfig(
     signals={
         "min_confirming": 4,
         "min_strength": 0.60,
+        "macd_opposition_penalty": 0.25,     # MACD 반대 시 강도 -25%
+        "low_volume_threshold": 0.8,         # 0.8x avg 미만 거부 (스캘프는 모멘텀 필수)
+        "low_volume_penalty": 1.0,           # 저볼륨 시 거부
+        "bb_conflict_penalty": 0.15,         # BB 충돌 시 강도 -15%
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 15},

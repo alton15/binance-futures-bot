@@ -79,6 +79,7 @@ class PaperTrader:
             sl_price=params.sl_price,
             tp_price=params.tp_price,
             trailing_stop_pct=trailing_stop_pct,
+            atr=params.atr,
             trade_id=trade_id,
             is_paper=True,
             profile=self.profile_name,

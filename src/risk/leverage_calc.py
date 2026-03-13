@@ -26,6 +26,7 @@ class PositionParams:
     sl_price: float
     tp_price: float
     liquidation_price: float
+    atr: float = 0           # ATR at entry (for trailing stop activation)
 
 
 def _price_precision(price: float) -> int:
@@ -159,6 +160,7 @@ def calculate_position(
         sl_price=round(sl_price, price_precision),
         tp_price=round(tp_price, price_precision),
         liquidation_price=round(liquidation_price, price_precision),
+        atr=round(atr, price_precision),
     )
 
     logger.info(

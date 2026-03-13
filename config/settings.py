@@ -63,6 +63,10 @@ SIGNALS = {
     },
     "min_confirming": 4,
     "min_strength": 0.55,
+    "macd_opposition_penalty": 0.30,   # MACD 반대 시 강도 감쇄 (1.0 = 거부)
+    "low_volume_threshold": 0.5,       # 볼륨 비율 임계값 (avg 대비)
+    "low_volume_penalty": 0.15,        # 저볼륨 시 강도 감쇄 (1.0 = 거부)
+    "bb_conflict_penalty": 0.10,       # BB 방향 충돌 시 강도 감쇄
 }
 
 # -- Risk Parameters -----------------------------------------------
@@ -81,7 +85,9 @@ RISK = {
     "maint_margin_rate": 0.005,       # 0.5% maintenance margin rate
     "sl_atr_multiplier": 2.0,         # SL = entry +/- 2.0 * ATR
     "tp_atr_multiplier": 4.0,         # TP = entry +/- 4.0 * ATR
-    "trailing_stop_pct": 0.02,        # 2% trailing stop
+    "trailing_stop_pct": 0.03,        # 3% trailing stop (2% → 크립토 변동성 대비)
+    "trailing_activation_atr": 1.0,   # 1x ATR 수익 후 트레일링 활성화
+    "trailing_atr_multiplier": 1.5,   # ATR 기반 동적 트레일링 거리
     "max_hold_hours": 72,             # Max 72h position hold
 }
 

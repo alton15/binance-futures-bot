@@ -74,6 +74,12 @@ async def analyze_coin(
     elif mtf_confirms == 0 and primary_signal.direction != "NEUTRAL":
         adjusted_strength *= 0.5
 
+    # Signal quality filters (profile-specific penalties)
+    if primary_signal.direction != "NEUTRAL" and profile:
+        adjusted_strength = _apply_quality_filters(
+            adjusted_strength, primary_signal, profile,
+        )
+
     # Save signal to DB
     import json
     details_json = json.dumps(primary_signal.details, default=str)
@@ -139,3 +145,83 @@ async def analyze_coin(
     )
 
     return result
+
+
+def _apply_quality_filters(
+    strength: float,
+    signal: Signal,
+    profile: ProfileConfig,
+) -> float:
+    """Apply profile-specific signal quality penalties.
+
+    Filters:
+    1. MACD opposition: heavy-weight indicator opposing signal direction
+    2. Low volume: insufficient momentum for reliable signal
+    3. BB conflict: Bollinger Band direction opposing signal direction
+
+    Penalty of 1.0 = reject (strength forced to 0).
+    """
+    details = signal.details
+
+    # 1. MACD opposition penalty (MACD has weight 2.0 - strongest indicator)
+    macd_vote = details.get("macd", {})
+    macd_dir = macd_vote.get("direction", "NEUTRAL")
+    macd_penalty = profile.get_signal("macd_opposition_penalty")
+    if macd_dir != "NEUTRAL" and macd_dir != signal.direction and macd_penalty > 0:
+        if macd_penalty >= 1.0:
+            logger.info(
+                "Signal %s REJECTED: MACD opposes %s (macd=%s, penalty=reject)",
+                signal.symbol, signal.direction, macd_dir,
+            )
+            return 0.0
+        strength *= (1 - macd_penalty)
+        logger.info(
+            "Signal %s penalized: MACD opposes %s (-%s%%), new strength=%.2f",
+            signal.symbol, signal.direction, int(macd_penalty * 100), strength,
+        )
+
+    # 2. Low volume penalty
+    vol_vote = details.get("volume", {})
+    vol_reason = vol_vote.get("reason", "")
+    low_vol_threshold = profile.get_signal("low_volume_threshold")
+    low_vol_penalty = profile.get_signal("low_volume_penalty")
+    if low_vol_threshold > 0 and low_vol_penalty > 0:
+        # Extract volume ratio from reason string (e.g., "low volume (0.3x avg)")
+        vol_ratio = _extract_volume_ratio(vol_reason)
+        if vol_ratio is not None and vol_ratio < low_vol_threshold:
+            if low_vol_penalty >= 1.0:
+                logger.info(
+                    "Signal %s REJECTED: low volume %.1fx < %.1fx threshold",
+                    signal.symbol, vol_ratio, low_vol_threshold,
+                )
+                return 0.0
+            strength *= (1 - low_vol_penalty)
+            logger.info(
+                "Signal %s penalized: low volume %.1fx (-%s%%), new strength=%.2f",
+                signal.symbol, vol_ratio, int(low_vol_penalty * 100), strength,
+            )
+
+    # 3. Bollinger Band conflict penalty
+    bb_vote = details.get("bollinger", {})
+    bb_dir = bb_vote.get("direction", "NEUTRAL")
+    bb_penalty = profile.get_signal("bb_conflict_penalty")
+    if bb_dir != "NEUTRAL" and bb_dir != signal.direction and bb_penalty > 0:
+        strength *= (1 - bb_penalty)
+        logger.info(
+            "Signal %s penalized: BB opposes %s (-%s%%), new strength=%.2f",
+            signal.symbol, signal.direction, int(bb_penalty * 100), strength,
+        )
+
+    return max(0.0, round(strength, 4))
+
+
+def _extract_volume_ratio(reason: str) -> float | None:
+    """Extract volume ratio from vote reason string.
+
+    Examples: "low volume (0.3x avg)" → 0.3, "high volume bullish (1.9x avg)" → 1.9
+    """
+    import re
+    match = re.search(r"\((\d+\.?\d*)x\s*avg\)", reason)
+    if match:
+        return float(match.group(1))
+    return None

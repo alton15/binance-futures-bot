@@ -173,16 +173,35 @@ def _should_exit(
         elif direction == "SHORT" and current_price <= tp_price:
             return f"take_profit (price {current_price:.4f} <= TP {tp_price:.4f})"
 
-    # 3. Trailing stop
+    # 3. Trailing stop (ATR-based activation + dynamic distance)
     if trailing_pct and trailing_pct > 0:
+        atr = position.get("atr", 0) or 0
+        activation_atr = profile.get_risk("trailing_activation_atr") if profile else RISK.get("trailing_activation_atr", 1.0)
+        trail_atr_mult = profile.get_risk("trailing_atr_multiplier") if profile else RISK.get("trailing_atr_multiplier", 1.5)
+
+        # Minimum profit required before trailing activates (ATR-based)
+        min_profit_distance = atr * activation_atr if atr > 0 else entry_price * trailing_pct
+
+        # Dynamic trailing distance: max(fixed %, ATR-based)
+        atr_trail_distance = atr * trail_atr_mult if atr > 0 else 0
+
         if direction == "LONG" and trailing_high > 0:
-            trail_trigger = trailing_high * (1 - trailing_pct)
-            if current_price <= trail_trigger and current_price > entry_price:
-                return f"trailing_stop (high={trailing_high:.4f} trigger={trail_trigger:.4f})"
+            profit_from_entry = trailing_high - entry_price
+            if profit_from_entry >= min_profit_distance:
+                # Use the larger of fixed % or ATR-based trailing distance
+                fixed_trigger = trailing_high * (1 - trailing_pct)
+                atr_trigger = trailing_high - atr_trail_distance if atr_trail_distance > 0 else fixed_trigger
+                trail_trigger = min(fixed_trigger, atr_trigger)  # more conservative (wider)
+                if current_price <= trail_trigger and current_price > entry_price:
+                    return f"trailing_stop (high={trailing_high:.4f} trigger={trail_trigger:.4f})"
         elif direction == "SHORT" and trailing_low > 0:
-            trail_trigger = trailing_low * (1 + trailing_pct)
-            if current_price >= trail_trigger and current_price < entry_price:
-                return f"trailing_stop (low={trailing_low:.4f} trigger={trail_trigger:.4f})"
+            profit_from_entry = entry_price - trailing_low
+            if profit_from_entry >= min_profit_distance:
+                fixed_trigger = trailing_low * (1 + trailing_pct)
+                atr_trigger = trailing_low + atr_trail_distance if atr_trail_distance > 0 else fixed_trigger
+                trail_trigger = max(fixed_trigger, atr_trigger)  # more conservative (wider)
+                if current_price >= trail_trigger and current_price < entry_price:
+                    return f"trailing_stop (low={trailing_low:.4f} trigger={trail_trigger:.4f})"
 
     # 4. Near liquidation (within 5% of liquidation price)
     if liq_price and liq_price > 0:

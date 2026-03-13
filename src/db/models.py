@@ -81,6 +81,7 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 trailing_stop_pct REAL,
                 trailing_high REAL,
                 trailing_low REAL,
+                atr REAL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'open',
                 exit_reason TEXT,
                 trade_id INTEGER,
@@ -188,6 +189,14 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 )
             except Exception:
                 pass  # Column already exists
+
+        # Migration: add atr column to positions for ATR-based trailing stop
+        try:
+            await db.execute(
+                "ALTER TABLE positions ADD COLUMN atr REAL DEFAULT 0"
+            )
+        except Exception:
+            pass  # Column already exists
 
         await db.commit()
 
@@ -341,6 +350,7 @@ async def open_position(
     sl_price: float | None = None,
     tp_price: float | None = None,
     trailing_stop_pct: float | None = None,
+    atr: float = 0,
     trade_id: int | None = None,
     is_paper: bool = True,
     profile: str = "neutral",
@@ -352,14 +362,15 @@ async def open_position(
             """INSERT INTO positions
                (symbol, direction, entry_price, current_price, size, cost,
                 leverage, margin, liquidation_price, sl_price, tp_price,
-                trailing_stop_pct, trailing_high, trailing_low,
+                trailing_stop_pct, trailing_high, trailing_low, atr,
                 trade_id, is_paper, profile)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (symbol, direction, entry_price, entry_price, size, cost,
              leverage, margin, liquidation_price, sl_price, tp_price,
              trailing_stop_pct,
              entry_price if direction == "LONG" else None,
              entry_price if direction == "SHORT" else None,
+             atr,
              trade_id, int(is_paper), profile),
         )
         await db.commit()

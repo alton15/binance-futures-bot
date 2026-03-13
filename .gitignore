@@ -5,6 +5,7 @@ venv/
 
 # Data
 data/
+*.db
 
 # Python
 __pycache__/

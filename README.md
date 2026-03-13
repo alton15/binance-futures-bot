@@ -2,6 +2,12 @@
 
 기술적 분석 기반 바이낸스 USDT-M 선물 자동매매 봇
 
+> **Disclaimer / 면책 조항**
+>
+> This software is for **educational and informational purposes only**. It is not financial advice. Use at your own risk. The author is not responsible for any financial losses incurred from using this software. Past performance does not guarantee future results. Always do your own research before trading.
+>
+> 이 소프트웨어는 **교육 및 정보 제공 목적**으로만 제공됩니다. 투자 조언이 아니며, 사용에 따른 모든 책임은 사용자에게 있습니다. 이 소프트웨어 사용으로 인한 금전적 손실에 대해 저자는 책임지지 않습니다.
+
 ## 개요
 
 AI 없이 순수 기술적 지표 알고리즘만으로 동작하는 바이낸스 선물 자동매매 봇이다. 별도 AI 구독이 필요 없으며, 코인 탐색부터 매매 신호 생성, 리스크 관리, 주문 실행, 포지션 모니터링까지 전 과정을 자동화한다. 추가 비용 없이 로컬 또는 클라우드 서버에서 운영 가능하다.

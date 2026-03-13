@@ -233,7 +233,7 @@ async def _execute_exit(
         trader = PaperTrader(profile_name=profile_name)
     else:
         from src.trading.order_executor import OrderExecutor
-        trader = OrderExecutor(client)
+        trader = OrderExecutor(client, profile_name=profile_name)
 
     result = await trader.close_order(position, current_price, exit_reason)
 

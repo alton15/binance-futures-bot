@@ -161,7 +161,7 @@ class ScalpPipeline:
                 trader = PaperTrader(profile_name=profile_name)
             else:
                 from src.trading.order_executor import OrderExecutor
-                trader = OrderExecutor(client)
+                trader = OrderExecutor(client, profile_name=profile_name)
 
             trade_result = await trader.place_order(
                 symbol=symbol,

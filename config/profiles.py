@@ -10,6 +10,7 @@ from config.settings import RISK, SIGNALS, LEVERAGE_TIERS
 # Default values for profile-only risk keys (not in global RISK)
 _PROFILE_RISK_DEFAULTS: dict[str, Any] = {
     "max_margin_per_trade_pct": 0.15,
+    "analysis_cooldown_seconds": 60,
 }
 
 
@@ -152,7 +153,7 @@ SCALP = ProfileConfig(
         "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
         "trailing_stop_pct": 0.015,          # 1.5% (기존 1.0% → 노이즈 방지)
         "max_hold_hours": 4,
-        "liquidation_buffer_pct": 0.15,      # 15% (기존 20%)
+        "liquidation_buffer_pct": 0.20,      # 20% (15x 레버리지 안전성 확보)
         "max_margin_per_trade_pct": 0.10,
         "analysis_cooldown_seconds": 60,
     },

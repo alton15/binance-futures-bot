@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine
 
 from config.settings import SCALP_SETTINGS, RISK, TRADING_MODE
+from config.profiles import get_profile
 from src.clients.binance_rest import BinanceClient
 from src.clients.binance_ws import BinanceWSClient
 from src.db.models import has_position_for_symbol
@@ -66,7 +67,8 @@ class ScalpWatcher:
 
         # Cooldown tracking: symbol -> last analysis timestamp
         self._cooldowns: dict[str, float] = {}
-        self._cooldown_seconds = 60  # 1-minute default
+        profile = get_profile(profile_name)
+        self._cooldown_seconds: int = profile.get_risk("analysis_cooldown_seconds")
 
         # Eligible symbols cache (refreshed periodically)
         self._eligible_symbols: set[str] = set()

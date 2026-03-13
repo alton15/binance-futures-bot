@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from config.settings import FEES
+from config.profiles import get_profile
 from src.clients.binance_rest import BinanceClient
 from src.risk.leverage_calc import PositionParams
 from src.db.models import (
@@ -22,8 +23,9 @@ logger = logging.getLogger(__name__)
 class OrderExecutor:
     """Live futures order execution via Binance API."""
 
-    def __init__(self, client: BinanceClient) -> None:
+    def __init__(self, client: BinanceClient, profile_name: str = "neutral") -> None:
         self.client = client
+        self.profile_name = profile_name
 
     async def place_order(
         self,
@@ -80,7 +82,9 @@ class OrderExecutor:
                 fill_price=fill_price, fill_size=fill_size,
             )
 
-            # Open position in DB
+            # Open position in DB - use profile-specific trailing stop
+            profile_cfg = get_profile(self.profile_name)
+            trailing_stop_pct = profile_cfg.get_risk("trailing_stop_pct")
             position_id = await open_position(
                 symbol=symbol,
                 direction=direction,
@@ -92,9 +96,10 @@ class OrderExecutor:
                 liquidation_price=params.liquidation_price,
                 sl_price=params.sl_price,
                 tp_price=params.tp_price,
-                trailing_stop_pct=0.02,
+                trailing_stop_pct=trailing_stop_pct,
                 trade_id=trade_id,
                 is_paper=False,
+                profile=self.profile_name,
             )
 
             # Place SL order

@@ -197,7 +197,7 @@ async def run_pipeline(
             trader = PaperTrader(profile_name=profile_name)
         else:
             from src.trading.order_executor import OrderExecutor
-            trader = OrderExecutor(client)
+            trader = OrderExecutor(client, profile_name=profile_name)
 
         trades_done = 0
         for analysis, risk_result in approved:

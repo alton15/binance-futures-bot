@@ -168,65 +168,28 @@ caffeinate -i futuresbot run --paper --loop
 
 ### Swing Trading Pipeline (30-Minute Cycle)
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                  Swing Execution Flow (30-min cycle)                  │
-└──────────────────────────────────────────────────────────────────────┘
-
-[Step 1] SCAN ─────────────────────────────────────────────────────────
-  │  Query 553+ USDT-M futures symbols
-  │  Filters: volume ≥$50M, volatility ≥1.5%, spread ≤0.05%, funding ≤0.1%
-  │  Score = volume × volatility × (1 - spread) → top 30 selected
-  ↓
-[Step 2] ANALYZE (per coin) ───────────────────────────────────────────
-  │  1-hour 250 candles → 8 technical indicators calculated (local CPU)
-  │  Weighted voting signal generation (LONG / SHORT / NEUTRAL) + NEUTRAL dead zone filtering
-  │  15-min + 4-hour multi-timeframe confirmation → strength adjustment
-  │  Signal quality filters (MACD/volume/BB) → strength adjustment
-  │  Condition: confirming indicators ≥ profile min AND strength ≥ profile min AND MTF ≥1 (Scalp: soft) → Actionable
-  ↓
-[Step 3] RISK CHECK (10-Gate) ─────────────────────────────────────────
-  │  Signal strength → position count → duplicates → daily loss → drawdown
-  │  → available margin → total exposure (margin-based) → leverage → liquidation buffer → funding rate
-  │  Any failure → trade rejected
-  ↓
-[Step 4] EXECUTE ──────────────────────────────────────────────────────
-  │  Paper: Record in DB only (no API calls)
-  │  Live: Set isolated margin → set leverage → market order → register SL/TP
-  ↓
-[Background] MONITOR (5-min cycle) ────────────────────────────────────
-  │  Fetch current price → calculate unrealized P&L → update trailing high/low
-  │  Check 7 exit conditions → immediate exit if triggered + Discord notification
-  ↓
-[Background] REPORT ───────────────────────────────────────────────────
-     Status update (30 min) → daily report (23:00 UTC)
+```mermaid
+graph TD
+    SCAN["<b>1. SCAN</b><br/>553+ USDT-M symbols<br/>8 filters → top 30"] --> ANALYZE["<b>2. ANALYZE</b> (per coin)<br/>8 indicators weighted voting<br/>Multi-timeframe confirmation<br/>Signal quality filters"]
+    ANALYZE --> RISK["<b>3. RISK CHECK</b> (10-Gate)<br/>Strength → Positions → Daily Loss<br/>→ Drawdown → Margin → Leverage<br/>→ Liquidation → Funding"]
+    RISK -->|Pass| EXEC["<b>4. EXECUTE</b><br/>Paper: DB record only<br/>Live: Isolated margin + SL/TP"]
+    RISK -->|Fail| REJECT[Trade Rejected]
+    EXEC --> MON["<b>MONITOR</b> (5-min cycle)<br/>7 exit conditions<br/>Trailing stop update"]
+    EXEC --> REPORT["<b>REPORT</b><br/>Status (30 min)<br/>Daily (23:00 UTC)"]
+    MON -->|Exit triggered| DISCORD[Discord Notification]
 ```
 
 ### Event-Driven Scalping Pipeline
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│               Scalping Execution Flow (WebSocket events)             │
-└──────────────────────────────────────────────────────────────────────┘
-
-[Real-time] DETECT (WebSocket !miniTicker@arr) ────────────────────────
-  │  All symbols streaming at 1-second intervals → 5-min sliding window analysis
-  │  Detection: volume spike (15-min avg ×2), price surge (±1.0%)
-  │  + REST hot coin polling (3 min) → top movers / volume coins
-  │  Filters: $20M minimum volume, 60-second cooldown, deduplication
-  ↓
-[Analysis] ANALYZE (3-min candle based) ───────────────────────────────
-  │  3-min primary + 1-min / 5-min multi-timeframe (soft — penalty only, no hard gate)
-  │  Max 3 concurrent analyses (semaphore)
-  ↓
-[Risk] RISK CHECK (10-Gate, Scalp profile) ────────────────────────────
-  │  Scalping-specific: margin-limited (no position count cap), 60% exposure, 5-15x leverage
-  ↓
-[Trade] EXECUTE ───────────────────────────────────────────────────────
-  ↓
-[Monitor] TICK (markPrice@1s WebSocket) ───────────────────────────────
-     Per-position 1-second tick subscription → SL/TP/trailing checked every tick
-     Max holding time 4 hours
+```mermaid
+graph TD
+    WS["<b>DETECT</b><br/>WebSocket !miniTicker@arr<br/>1-sec streaming"] --> SPIKE{"Volume Spike?<br/>Price Surge?"}
+    REST["REST Hot Coin Polling<br/>(3-min interval)"] --> SPIKE
+    SPIKE -->|Yes| ANALYZE["<b>ANALYZE</b><br/>3-min candle primary<br/>1-min / 5-min MTF (soft)"]
+    SPIKE -->|No| WS
+    ANALYZE --> RISK["<b>RISK CHECK</b><br/>10-Gate, Scalp profile<br/>60% exposure, 5-15x leverage"]
+    RISK -->|Pass| EXEC["<b>EXECUTE</b>"]
+    EXEC --> TICK["<b>TICK MONITOR</b><br/>markPrice@1s WebSocket<br/>SL/TP/trailing per tick<br/>Max 4 hours"]
 ```
 
 ### Trade Signal Generation (8-Indicator Weighted Voting)

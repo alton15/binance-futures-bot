@@ -165,7 +165,19 @@ class RiskManager:
         )
 
     async def _gate_position_limit(self, result: RiskCheckResult) -> None:
-        """Gate 2: Maximum open positions."""
+        """Gate 2: Maximum open positions.
+
+        Scalp profile skips this gate — margin limits (per-trade cap +
+        total exposure cap) already constrain position count implicitly.
+        """
+        if self._profile_name == "scalp":
+            result.add_gate(
+                "position_limit",
+                True,
+                "Skipped for scalp (margin limits sufficient)",
+            )
+            return
+
         positions = await get_open_positions(
             is_paper=self.is_paper, profile=self._profile_name,
         )

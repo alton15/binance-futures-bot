@@ -125,9 +125,9 @@ SCHEDULE = {
 # -- Scalping Settings ---------------------------------------------
 SCALP_SETTINGS = {
     "primary_timeframe": "3m",
-    "confirm_timeframes": ["1m", "15m"],
-    "volume_spike_multiplier": 3.0,     # recent vol > avg × 3
-    "price_move_threshold": 0.015,      # 1.5% price change
+    "confirm_timeframes": ["1m", "5m"],  # 15m → 5m: 3분봉 스캘핑에 적합
+    "volume_spike_multiplier": 2.0,     # recent vol > avg × 2 (3.0 → 2.0: 감지 빈도 증가)
+    "price_move_threshold": 0.01,       # 1.0% price change (1.5% → 1.0%: 더 작은 움직임 포착)
     "spike_window_seconds": 300,        # 5-minute recent window
     "history_window_seconds": 900,      # 15-minute history window
     "hot_coin_poll_seconds": 180,       # 3-minute hot coin polling

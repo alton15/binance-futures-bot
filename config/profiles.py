@@ -162,28 +162,28 @@ SCALP = ProfileConfig(
     label="Scalp",
     risk={
         "risk_per_trade_pct": 0.01,          # 1% (높은 레버리지 보상)
-        "max_open_positions": 3,
+        "max_open_positions": 5,             # 3 → 5: 스캘핑 기회 확대
         "max_exposure_pct": 0.60,
-        "daily_loss_limit_pct": 0.05,
-        "max_drawdown_pct": 0.15,
-        "signal_strength_min": 0.60,
+        "daily_loss_limit_pct": 0.07,        # 5% → 7%: 고빈도 스캘핑 여유
+        "max_drawdown_pct": 0.20,            # 15% → 20%: 누적 드로다운 여유
+        "signal_strength_min": 0.50,         # 0.60 → 0.50: 3분봉 노이즈 감안
         "sl_atr_multiplier": 2.5,            # 2.5x ATR (노이즈 필터링 강화)
         "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
         "trailing_stop_pct": 0.025,          # 1.5% → 2.5% (3분봉 노이즈 대비)
         "trailing_activation_atr": 0.8,      # 0.8x ATR (스캘프는 빠른 활성화)
         "trailing_atr_multiplier": 1.0,      # 1x ATR 트레일링 거리
         "max_hold_hours": 4,
-        "liquidation_buffer_pct": 0.20,      # 20% (15x 레버리지 안전성 확보)
+        "liquidation_buffer_pct": 0.15,      # 20% → 15%: aggressive와 동일
         "max_margin_per_trade_pct": 0.10,
         "analysis_cooldown_seconds": 60,
     },
     signals={
-        "min_confirming": 4,
-        "min_strength": 0.60,
-        "macd_opposition_penalty": 0.25,     # MACD 반대 시 강도 -25%
-        "low_volume_threshold": 0.8,         # 0.8x avg 미만 거부 (스캘프는 모멘텀 필수)
-        "low_volume_penalty": 1.0,           # 저볼륨 시 거부
-        "bb_conflict_penalty": 0.15,         # BB 충돌 시 강도 -15%
+        "min_confirming": 3,                 # 4 → 3: 3분봉에서 충족 용이
+        "min_strength": 0.50,                # 0.60 → 0.50: 진입 기회 확대
+        "macd_opposition_penalty": 0.20,     # 0.25 → 0.20: MACD 반대 시 강도 -20%
+        "low_volume_threshold": 0.5,         # 0.8 → 0.5: 스파이크 감지와 일관성
+        "low_volume_penalty": 0.20,          # 1.0(거부) → 0.20: 패널티만 부과
+        "bb_conflict_penalty": 0.10,         # 0.15 → 0.10: BB 충돌 패널티 완화
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 15},

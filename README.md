@@ -2,6 +2,7 @@
 
 # Binance Futures Trading Bot
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 Automated Binance USDT-M futures trading bot based on technical analysis
 
 > **Disclaimer**

@@ -266,7 +266,7 @@ Strength = winning side score / total weight sum (total weight 10.0)
 **Multi-Timeframe Adjustment**:
 - Both 15-min + 4-hour confirm same direction → strength × 1.15
 - Only one confirms same direction → no adjustment (default)
-- Both oppose direction → strength × 0.5 + **entry blocked**
+- Both oppose direction → strength × 0.5 + **entry blocked** (Scalp: penalty only, no block)
 
 ### 10-Gate Risk Management
 

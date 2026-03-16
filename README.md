@@ -218,7 +218,7 @@ caffeinate -i futuresbot run --paper --loop
   │  Max 3 concurrent analyses (semaphore)
   ↓
 [Risk] RISK CHECK (10-Gate, Scalp profile) ────────────────────────────
-  │  Scalping-specific: max 3 positions, 60% exposure, 5-15x leverage
+  │  Scalping-specific: margin-limited (no position count cap), 60% exposure, 5-15x leverage
   ↓
 [Trade] EXECUTE ───────────────────────────────────────────────────────
   ↓
@@ -275,7 +275,7 @@ All trade signals must pass through 10 sequential risk gates to be executed. If 
 | Gate | Validation | Conservative | Neutral | Aggressive | Scalp |
 |:----:|-----------|:-----------:|:-------:|:----------:|:-----:|
 | 1 | Signal strength | ≥ 0.70 | ≥ 0.65 | ≥ 0.60 | ≥ 0.40 |
-| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | ≤ 5 |
+| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | Skipped (margin-limited) |
 | 3 | Duplicate symbol | None | None | None | None |
 | 4 | Daily loss | ≤ 4% | ≤ 6% | ≤ 8% | ≤ 7% |
 | 5 | Max drawdown | ≤ 10% | ≤ 20% | ≤ 25% | ≤ 20% |
@@ -356,7 +356,7 @@ Defined as frozen dataclasses in `config/profiles.py`. Each profile has differen
 | Parameter | Conservative | Neutral | Aggressive | Scalp |
 |-----------|:-----------:|:-------:|:----------:|:-----:|
 | Risk per trade | 1.5% ($1.5) | 2% ($2) | 3% ($3) | 1% ($1) |
-| Concurrent positions | 3 | 5 | 5 | 5 |
+| Concurrent positions | 3 | 5 | 5 | No limit (margin-limited) |
 | Total margin exposure | 40% | 60% | 70% | 60% |
 | Daily loss limit | 4% ($4) | 6% ($6) | 8% ($8) | 7% ($7) |
 | Max drawdown | 10% | 20% | 25% | 20% |

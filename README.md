@@ -27,7 +27,7 @@ A Binance futures automated trading bot that operates purely on technical indica
 - **ATR-Based Trailing Stop**: Activates after ATR x activation profit reached, locks in profit on ATR x multiplier retracement
 - **Per-Position Margin Cap**: Limited to 10-15% of capital, enabling entry on large-cap coins (BTC/ETH)
 - **Paper / Live Mode**: Switch between simulated and real trading with a single environment variable
-- **Multi-Timeframe**: 1-hour candle primary analysis + 15-minute, 4-hour confirmation (Scalping: 3-minute + 1-minute, 15-minute)
+- **Multi-Timeframe**: 1-hour candle primary analysis + 15-minute, 4-hour confirmation (Scalping: 3-minute + 1-minute, 5-minute soft confirmation)
 - **7 Auto-Exit Conditions**: Stop loss / take profit / ATR-based trailing stop / signal reversal / liquidation proximity / excessive funding rate / max holding time
 - **Discord Notifications**: Trade execution, position closure, status updates, daily reports, multi-profile comparison
 - **Isolated Margin**: Per-position margin isolation in live mode (other positions protected if one is liquidated)
@@ -181,7 +181,7 @@ caffeinate -i futuresbot run --paper --loop
   │  Weighted voting signal generation (LONG / SHORT / NEUTRAL) + NEUTRAL dead zone filtering
   │  15-min + 4-hour multi-timeframe confirmation → strength adjustment
   │  Signal quality filters (MACD/volume/BB) → strength adjustment
-  │  Condition: confirming indicators ≥4 AND strength ≥ profile minimum AND MTF ≥1 → Actionable
+  │  Condition: confirming indicators ≥ profile min AND strength ≥ profile min AND MTF ≥1 (Scalp: soft) → Actionable
   ↓
 [Step 3] RISK CHECK (10-Gate) ─────────────────────────────────────────
   │  Signal strength → position count → duplicates → daily loss → drawdown
@@ -209,12 +209,12 @@ caffeinate -i futuresbot run --paper --loop
 
 [Real-time] DETECT (WebSocket !miniTicker@arr) ────────────────────────
   │  All symbols streaming at 1-second intervals → 5-min sliding window analysis
-  │  Detection: volume spike (15-min avg ×3), price surge (±1.5%)
+  │  Detection: volume spike (15-min avg ×2), price surge (±1.0%)
   │  + REST hot coin polling (3 min) → top movers / volume coins
   │  Filters: $20M minimum volume, 60-second cooldown, deduplication
   ↓
 [Analysis] ANALYZE (3-min candle based) ───────────────────────────────
-  │  3-min primary + 1-min / 15-min multi-timeframe confirmation
+  │  3-min primary + 1-min / 5-min multi-timeframe (soft — penalty only, no hard gate)
   │  Max 3 concurrent analyses (semaphore)
   ↓
 [Risk] RISK CHECK (10-Gate, Scalp profile) ────────────────────────────
@@ -250,15 +250,15 @@ Tie → NEUTRAL (no entry)
 Strength = winning side score / total weight sum (total weight 10.0)
 ```
 
-**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥5) AND strength ≥ profile minimum AND MTF confirmations ≥ 1
+**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥5, Scalp: ≥2) AND strength ≥ profile minimum AND MTF confirmations ≥ 1 (Scalp: MTF soft — no hard gate, strength penalty only)
 
 **Signal Quality Filters** (per-profile penalties):
 
 | Filter | Conservative | Neutral | Aggressive | Scalp |
 |--------|:-----------:|:-------:|:----------:|:-----:|
-| MACD opposing direction | Reject (×1.0) | -30% | -15% | -25% |
-| Low volume (below avg) | Reject (0.5x) | -15% (0.5x) | None | Reject (0.8x) |
-| BB direction conflict | -20% | -10% | None | -15% |
+| MACD opposing direction | Reject (×1.0) | -30% | -15% | -20% |
+| Low volume (below avg) | Reject (0.5x) | -15% (0.5x) | None | None |
+| BB direction conflict | -20% | -10% | None | None |
 
 - **Reject**: Signal immediately rejected when penalty is 1.0 or volume below threshold
 - **-N%**: Strength attenuated by N%, then re-checked against minimum strength threshold
@@ -274,15 +274,15 @@ All trade signals must pass through 10 sequential risk gates to be executed. If 
 
 | Gate | Validation | Conservative | Neutral | Aggressive | Scalp |
 |:----:|-----------|:-----------:|:-------:|:----------:|:-----:|
-| 1 | Signal strength | ≥ 0.70 | ≥ 0.65 | ≥ 0.60 | ≥ 0.60 |
-| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | ≤ 3 |
+| 1 | Signal strength | ≥ 0.70 | ≥ 0.65 | ≥ 0.60 | ≥ 0.40 |
+| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | ≤ 5 |
 | 3 | Duplicate symbol | None | None | None | None |
-| 4 | Daily loss | ≤ 4% | ≤ 6% | ≤ 8% | ≤ 5% |
-| 5 | Max drawdown | ≤ 10% | ≤ 20% | ≤ 25% | ≤ 15% |
+| 4 | Daily loss | ≤ 4% | ≤ 6% | ≤ 8% | ≤ 7% |
+| 5 | Max drawdown | ≤ 10% | ≤ 20% | ≤ 25% | ≤ 20% |
 | 6 | Available margin | ≥ required margin | 〃 | 〃 | 〃 |
 | 7 | Total margin exposure | ≤ 40% | ≤ 60% | ≤ 70% | ≤ 60% |
 | 8 | Leverage | 1-3x | 2-6x | 3-10x | 5-15x |
-| 9 | Liquidation buffer | ≥ 30% | ≥ 20% | ≥ 15% | ≥ 20% |
+| 9 | Liquidation buffer | ≥ 30% | ≥ 20% | ≥ 15% | ≥ 15% |
 | 10 | Funding rate | ≤ 0.1% | ≤ 0.1% | ≤ 0.1% | ≤ 0.1% |
 
 Gate 4 daily loss is calculated against **dynamic capital** (initial capital + today's profits), supporting compound growth.
@@ -356,19 +356,19 @@ Defined as frozen dataclasses in `config/profiles.py`. Each profile has differen
 | Parameter | Conservative | Neutral | Aggressive | Scalp |
 |-----------|:-----------:|:-------:|:----------:|:-----:|
 | Risk per trade | 1.5% ($1.5) | 2% ($2) | 3% ($3) | 1% ($1) |
-| Concurrent positions | 3 | 5 | 5 | 3 |
+| Concurrent positions | 3 | 5 | 5 | 5 |
 | Total margin exposure | 40% | 60% | 70% | 60% |
-| Daily loss limit | 4% ($4) | 6% ($6) | 8% ($8) | 5% ($5) |
-| Max drawdown | 10% | 20% | 25% | 15% |
+| Daily loss limit | 4% ($4) | 6% ($6) | 8% ($8) | 7% ($7) |
+| Max drawdown | 10% | 20% | 25% | 20% |
 | Leverage range | 1-3x | 2-6x | 3-10x | 5-15x |
-| Min signal strength | 0.70 | 0.65 | 0.60 | 0.60 |
+| Min signal strength | 0.70 | 0.65 | 0.60 | 0.40 |
 | SL multiplier (ATR) | 2.0 | 2.0 | 2.0 | 2.5 |
 | TP multiplier (ATR) | 4.0 | 4.0 | 4.0 | 4.0 |
 | Trailing stop | 3.0% | 3.0% | 3.5% | 2.5% |
 | Trailing activation | 1.0x ATR | 1.0x ATR | 0.8x ATR | 0.8x ATR |
-| Liquidation buffer | 30% | 20% | 15% | 20% |
+| Liquidation buffer | 30% | 20% | 15% | 15% |
 | Max holding time | 48 hours | 72 hours | 72 hours | 4 hours |
-| Analysis timeframe | 1h + 15m/4h | 1h + 15m/4h | 1h + 15m/4h | 3m + 1m/15m |
+| Analysis timeframe | 1h + 15m/4h | 1h + 15m/4h | 1h + 15m/4h | 3m + 1m/5m (soft MTF) |
 
 ### Multi-Profile Mode
 

@@ -166,7 +166,7 @@ SCALP = ProfileConfig(
         "max_exposure_pct": 0.60,
         "daily_loss_limit_pct": 0.07,        # 5% → 7%: 고빈도 스캘핑 여유
         "max_drawdown_pct": 0.20,            # 15% → 20%: 누적 드로다운 여유
-        "signal_strength_min": 0.50,         # 0.60 → 0.50: 3분봉 노이즈 감안
+        "signal_strength_min": 0.40,         # 0.50 → 0.40: MTF 감쇄 후에도 통과
         "sl_atr_multiplier": 2.5,            # 2.5x ATR (노이즈 필터링 강화)
         "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
         "trailing_stop_pct": 0.025,          # 1.5% → 2.5% (3분봉 노이즈 대비)
@@ -178,12 +178,12 @@ SCALP = ProfileConfig(
         "analysis_cooldown_seconds": 60,
     },
     signals={
-        "min_confirming": 3,                 # 4 → 3: 3분봉에서 충족 용이
-        "min_strength": 0.50,                # 0.60 → 0.50: 진입 기회 확대
-        "macd_opposition_penalty": 0.20,     # 0.25 → 0.20: MACD 반대 시 강도 -20%
-        "low_volume_threshold": 0.5,         # 0.8 → 0.5: 스파이크 감지와 일관성
-        "low_volume_penalty": 0.20,          # 1.0(거부) → 0.20: 패널티만 부과
-        "bb_conflict_penalty": 0.10,         # 0.15 → 0.10: BB 충돌 패널티 완화
+        "min_confirming": 2,                 # 3 → 2: 3분봉 노이즈 감안, 지표 2개 동의면 충분
+        "min_strength": 0.40,                # 0.50 → 0.40: MTF 0일 때 50% 감쇄 후에도 통과
+        "macd_opposition_penalty": 0.20,     # MACD 반대 시 강도 -20%
+        "low_volume_threshold": 0.0,         # 볼륨 필터 제거 (스파이크 감지가 이미 볼륨 체크)
+        "low_volume_penalty": 0.0,           # aggressive와 동일: 볼륨 패널티 없음
+        "bb_conflict_penalty": 0.0,          # aggressive와 동일: BB 패널티 없음
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 15},

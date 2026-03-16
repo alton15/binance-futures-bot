@@ -118,6 +118,11 @@ async def analyze_coin(
     min_confirming = profile.get_signal("min_confirming") if profile else SIGNALS["min_confirming"]
     min_strength = profile.get_signal("min_strength") if profile else SIGNALS["min_strength"]
 
+    # Scalp profile: MTF confirmation is soft (strength penalty only, no hard gate)
+    # Swing profiles: require at least 1 MTF confirmation
+    is_scalp = profile is not None and profile.name == "scalp"
+    mtf_required = 0 if is_scalp else 1
+
     result = {
         "symbol": symbol,
         "signal_id": signal_id,
@@ -129,7 +134,7 @@ async def analyze_coin(
             primary_signal.direction != "NEUTRAL"
             and primary_signal.confirming_count >= min_confirming
             and adjusted_strength >= min_strength
-            and mtf_confirms >= 1
+            and mtf_confirms >= mtf_required
         ),
         "close_price": indicators.close,
         "atr": indicators.atr,

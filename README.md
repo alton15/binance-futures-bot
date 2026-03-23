@@ -22,7 +22,7 @@ A Binance futures automated trading bot that operates purely on technical indica
 - **Multi-Profile Parallel Execution**: Simultaneous comparison of 3 profiles in Paper mode
 - **Event-Driven Scalping**: Real-time WebSocket volume spike / price surge detection → 3-minute candle ultra-short-term trading
 - **Dynamic Coin Discovery**: Auto-selects up to 30 candidates from 553+ USDT-M futures symbols every 30 minutes
-- **Dynamic Leverage**: Based on volatility tier x signal strength x (1 - drawdown), auto-adjusted 1-15x per profile
+- **Dynamic Leverage**: Based on volatility tier x signal strength x (1 - drawdown), auto-adjusted 1-10x per profile
 - **Fee Modeling**: Round-trip taker fee (0.08%) factored into position sizing
 - **10-Gate Risk Management**: Margin-based exposure limits, daily loss caps, drawdown blocking, and more — sequential validation
 - **Signal Quality Filters**: MACD opposition / low volume / BB conflict detection → per-profile strength attenuation/rejection
@@ -172,7 +172,7 @@ caffeinate -i futuresbot run --paper --loop
 graph TD
     SCAN["<b>1. SCAN</b><br/>553+ USDT-M symbols<br/>8 filters → top 30"] --> ANALYZE["<b>2. ANALYZE</b> (per coin)<br/>8 indicators weighted voting<br/>Multi-timeframe confirmation<br/>Signal quality filters"]
     ANALYZE --> RISK["<b>3. RISK CHECK</b> (10-Gate)<br/>Strength → Positions → Daily Loss<br/>→ Drawdown → Margin → Leverage<br/>→ Liquidation → Funding"]
-    RISK -->|Pass| EXEC["<b>4. EXECUTE</b><br/>Paper: DB record only<br/>Live: Isolated margin + SL/TP"]
+    RISK -->|Pass| EXEC["<b>4. EXECUTE</b><br/>Paper: DB record<br/>Live: Isolated margin + SL/TP"]
     RISK -->|Fail| REJECT[Trade Rejected]
     EXEC --> MON["<b>MONITOR</b> (5-min cycle)<br/>7 exit conditions<br/>Trailing stop update"]
     EXEC --> REPORT["<b>REPORT</b><br/>Status (30 min)<br/>Daily (23:00 UTC)"]
@@ -187,7 +187,7 @@ graph TD
     REST["REST Hot Coin Polling<br/>(3-min interval)"] --> SPIKE
     SPIKE -->|Yes| ANALYZE["<b>ANALYZE</b><br/>3-min candle primary<br/>1-min / 5-min MTF (soft)"]
     SPIKE -->|No| WS
-    ANALYZE --> RISK["<b>RISK CHECK</b><br/>10-Gate, Scalp profile<br/>60% exposure, 5-15x leverage"]
+    ANALYZE --> RISK["<b>RISK CHECK</b><br/>10-Gate, Scalp profile<br/>60% exposure, 5-10x leverage"]
     RISK -->|Pass| EXEC["<b>EXECUTE</b>"]
     EXEC --> TICK["<b>TICK MONITOR</b><br/>markPrice@1s WebSocket<br/>SL/TP/trailing per tick<br/>Max 4 hours"]
 ```
@@ -215,13 +215,13 @@ Tie → NEUTRAL (no entry)
 Strength = winning side score / total weight sum (total weight 10.0)
 ```
 
-**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥5, Scalp: ≥2) AND strength ≥ profile minimum AND MTF confirmations ≥ 1 (Scalp: MTF soft — no hard gate, strength penalty only)
+**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥4, Aggressive: ≥5, Scalp: ≥3) AND strength ≥ profile minimum AND MTF confirmations ≥ 1 (Scalp: MTF soft — no hard gate, strength penalty only)
 
 **Signal Quality Filters** (per-profile penalties):
 
 | Filter | Conservative | Neutral | Aggressive | Scalp |
 |--------|:-----------:|:-------:|:----------:|:-----:|
-| MACD opposing direction | Reject (×1.0) | -30% | -15% | -20% |
+| MACD opposing direction | Reject (×1.0) | -30% | -30% | -20% |
 | Low volume (below avg) | Reject (0.5x) | -15% (0.5x) | None | None |
 | BB direction conflict | -20% | -10% | None | None |
 
@@ -239,14 +239,14 @@ All trade signals must pass through 10 sequential risk gates to be executed. If 
 
 | Gate | Validation | Conservative | Neutral | Aggressive | Scalp |
 |:----:|-----------|:-----------:|:-------:|:----------:|:-----:|
-| 1 | Signal strength | ≥ 0.70 | ≥ 0.65 | ≥ 0.60 | ≥ 0.40 |
-| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | Skipped (margin-limited) |
+| 1 | Signal strength | ≥ 0.65 | ≥ 0.65 | ≥ 0.65 | ≥ 0.45 |
+| 2 | Open position count | ≤ 3 | ≤ 5 | ≤ 5 | ≤ 3 |
 | 3 | Duplicate symbol | None | None | None | None |
 | 4 | Daily loss | ≤ 4% | ≤ 6% | ≤ 8% | ≤ 7% |
 | 5 | Max drawdown | ≤ 10% | ≤ 20% | ≤ 25% | ≤ 20% |
 | 6 | Available margin | ≥ required margin | 〃 | 〃 | 〃 |
 | 7 | Total margin exposure | ≤ 40% | ≤ 60% | ≤ 70% | ≤ 60% |
-| 8 | Leverage | 1-3x | 2-6x | 3-10x | 5-15x |
+| 8 | Leverage | 1-3x | 2-6x | 3-8x | 5-10x |
 | 9 | Liquidation buffer | ≥ 30% | ≥ 20% | ≥ 15% | ≥ 15% |
 | 10 | Funding rate | ≤ 0.1% | ≤ 0.1% | ≤ 0.1% | ≤ 0.1% |
 
@@ -271,8 +271,8 @@ Maximum leverage is capped based on volatility, and the final leverage is determ
 |---------|:---:|:---:|:-------------------:|:--------------------:|
 | Conservative | 1x | 3x | 3x | 1x |
 | Neutral | 2x | 6x | 6x | 2x |
-| Aggressive | 3x | 10x | 10x | 3x |
-| Scalp | 5x | 15x | 15x | 5x |
+| Aggressive | 3x | 8x | 8x | 3x |
+| Scalp | 5x | 10x | 10x | 5x |
 
 **Formula**: `Final leverage = tier max × signal strength × (1 - drawdown rate)` → clamped to [min, max] range
 
@@ -320,17 +320,17 @@ Defined as frozen dataclasses in `config/profiles.py`. Each profile has differen
 
 | Parameter | Conservative | Neutral | Aggressive | Scalp |
 |-----------|:-----------:|:-------:|:----------:|:-----:|
-| Risk per trade | 1.5% ($1.5) | 2% ($2) | 3% ($3) | 1% ($1) |
-| Concurrent positions | 3 | 5 | 5 | No limit (margin-limited) |
+| Risk per trade | 1.5% ($1.5) | 2% ($2) | 2% ($2) | 0.8% ($0.8) |
+| Concurrent positions | 3 | 5 | 5 | 3 |
 | Total margin exposure | 40% | 60% | 70% | 60% |
 | Daily loss limit | 4% ($4) | 6% ($6) | 8% ($8) | 7% ($7) |
 | Max drawdown | 10% | 20% | 25% | 20% |
-| Leverage range | 1-3x | 2-6x | 3-10x | 5-15x |
-| Min signal strength | 0.70 | 0.65 | 0.60 | 0.40 |
-| SL multiplier (ATR) | 2.0 | 2.0 | 2.0 | 2.5 |
-| TP multiplier (ATR) | 4.0 | 4.0 | 4.0 | 4.0 |
-| Trailing stop | 3.0% | 3.0% | 3.5% | 2.5% |
-| Trailing activation | 1.0x ATR | 1.0x ATR | 0.8x ATR | 0.8x ATR |
+| Leverage range | 1-3x | 2-6x | 3-8x | 5-10x |
+| Min signal strength | 0.65 | 0.65 | 0.65 | 0.45 |
+| SL multiplier (ATR) | 2.0 | 2.0 | 2.0 | 3.0 |
+| TP multiplier (ATR) | 4.0 | 4.0 | 4.0 | 3.5 |
+| Trailing stop | 3.0% | 3.0% | 3.5% | 2.0% |
+| Trailing activation | 1.5x ATR | 1.2x ATR | 1.2x ATR | 1.2x ATR |
 | Liquidation buffer | 30% | 20% | 15% | 15% |
 | Max holding time | 48 hours | 72 hours | 72 hours | 4 hours |
 | Analysis timeframe | 1h + 15m/4h | 1h + 15m/4h | 1h + 15m/4h | 3m + 1m/5m (soft MTF) |

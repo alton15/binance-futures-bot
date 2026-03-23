@@ -116,22 +116,22 @@ def test_calculate_position_zero_atr():
 
 
 def test_aggressive_max_leverage():
-    """Aggressive profile: low volatility -> up to 10x."""
+    """Aggressive profile: low volatility -> up to 8x."""
     lev = get_max_leverage(0.01, profile=AGGRESSIVE)
-    assert lev == 10
+    assert lev == 8
 
 
 def test_aggressive_calculate_leverage():
-    """Aggressive profile: clamped to [3, 10]."""
+    """Aggressive profile: clamped to [3, 8]."""
     lev = calculate_leverage(
-        volatility_24h=0.01,   # aggressive tier = 10x
+        volatility_24h=0.01,   # aggressive tier = 8x
         signal_strength=0.9,
         current_drawdown_pct=0,
         profile=AGGRESSIVE,
     )
-    # 10 * 0.9 * 1.0 = 9
-    assert lev == 9
-    assert 3 <= lev <= 10
+    # 8 * 0.9 * 1.0 = 7.2 -> int(7.2) = 7
+    assert lev == 7
+    assert 3 <= lev <= 8
 
 
 def test_conservative_max_leverage():
@@ -185,7 +185,7 @@ def test_swing_profiles_same_sl_multiplier():
 
 
 def test_scalp_wider_sl_than_swing():
-    """Scalp SL multiplier (2.5x) is wider than swing (2.0x)."""
+    """Scalp SL multiplier (3.0x) is wider than swing (2.0x)."""
     scalp_params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
         leverage=10, capital=100, profile=SCALP,
@@ -194,7 +194,7 @@ def test_scalp_wider_sl_than_swing():
         entry_price=50000, atr=500, direction="LONG",
         leverage=10, capital=100, profile=NEUTRAL,
     )
-    # Scalp SL = 2.5 * 500 = 1250, price = 48750
+    # Scalp SL = 3.0 * 500 = 1500, price = 48500
     # Neutral SL = 2.0 * 500 = 1000, price = 49000
     assert scalp_params.sl_price < neut_params.sl_price
 
@@ -281,21 +281,21 @@ def test_fee_cost_is_deducted_from_risk():
 
 
 def test_scalp_max_leverage_low_volatility():
-    """SCALP profile: low volatility -> max 15x."""
+    """SCALP profile: low volatility -> max 10x."""
     lev = get_max_leverage(0.01, profile=SCALP)
-    assert lev == 15
+    assert lev == 10
 
 
 def test_scalp_max_leverage_mid_volatility():
-    """SCALP profile: mid volatility -> max 12x."""
+    """SCALP profile: mid volatility -> max 8x."""
     lev = get_max_leverage(0.03, profile=SCALP)
-    assert lev == 12
+    assert lev == 8
 
 
 def test_scalp_max_leverage_high_volatility():
-    """SCALP profile: high volatility -> max 8x."""
+    """SCALP profile: high volatility -> max 6x."""
     lev = get_max_leverage(0.05, profile=SCALP)
-    assert lev == 8
+    assert lev == 6
 
 
 def test_scalp_max_leverage_extreme_volatility():
@@ -305,16 +305,16 @@ def test_scalp_max_leverage_extreme_volatility():
 
 
 def test_scalp_calculate_leverage_clamped():
-    """SCALP profile: leverage clamped to [5, 15]."""
+    """SCALP profile: leverage clamped to [5, 10]."""
     lev = calculate_leverage(
-        volatility_24h=0.01,   # scalp tier = 15x
+        volatility_24h=0.01,   # scalp tier = 10x
         signal_strength=0.9,
         current_drawdown_pct=0,
         profile=SCALP,
     )
-    # 15 * 0.9 * 1.0 = 13.5 -> int(13.5) = 13
-    assert lev == 13
-    assert 5 <= lev <= 15
+    # 10 * 0.9 * 1.0 = 9
+    assert lev == 9
+    assert 5 <= lev <= 10
 
 
 def test_scalp_leverage_floor():
@@ -330,17 +330,17 @@ def test_scalp_leverage_floor():
 
 
 def test_scalp_position_sizing():
-    """SCALP profile: 1% risk with 2.5x ATR SL."""
+    """SCALP profile: 0.8% risk with 3.0x ATR SL."""
     params = calculate_position(
         entry_price=50000, atr=500, direction="LONG",
         leverage=10, capital=100, profile=SCALP,
     )
     assert params.leverage == 10
     assert params.position_size > 0
-    # SL = 50000 - 2.5 * 500 = 48750
-    assert params.sl_price == round(50000 - 2.5 * 500, 4)
-    # TP = 50000 + 4.0 * 500 = 52000
-    assert params.tp_price == round(50000 + 4.0 * 500, 4)
+    # SL = 50000 - 3.0 * 500 = 48500
+    assert params.sl_price == round(50000 - 3.0 * 500, 4)
+    # TP = 50000 + 3.5 * 500 = 51750
+    assert params.tp_price == round(50000 + 3.5 * 500, 4)
 
 
 def test_scalp_margin_cap():

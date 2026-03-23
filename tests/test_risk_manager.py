@@ -138,13 +138,13 @@ async def test_gate10_funding_too_high(mock_peak, mock_stats, mock_pnl, mock_has
 @patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 0})
 @patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=100)
 async def test_conservative_rejects_weak_signal(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
-    """Conservative profile requires signal_strength >= 0.70."""
+    """Conservative profile requires signal_strength >= 0.65."""
     client = AsyncMock()
     rm = RiskManager(client, capital=100, is_paper=True, profile=CONSERVATIVE)
     result = await rm.check(
         symbol="BTC/USDT:USDT",
         direction="LONG",
-        signal_strength=0.65,  # passes neutral (0.65) but fails conservative (0.7)
+        signal_strength=0.60,  # below conservative threshold (0.65)
         position_params=_default_params(),
     )
     assert result.passed is False
@@ -157,14 +157,14 @@ async def test_conservative_rejects_weak_signal(mock_peak, mock_stats, mock_pnl,
 @patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 0})
 @patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=100)
 async def test_aggressive_accepts_high_leverage(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
-    """Aggressive profile allows leverage up to 10x."""
+    """Aggressive profile allows leverage up to 8x."""
     client = AsyncMock()
     rm = RiskManager(client, capital=100, is_paper=True, profile=AGGRESSIVE)
     params = PositionParams(
-        leverage=8,
+        leverage=7,
         position_size=0.001,
         notional_value=50,
-        margin_required=6.25,
+        margin_required=7.14,
         sl_price=48500,
         tp_price=53000,
         liquidation_price=30000,
@@ -180,8 +180,8 @@ async def test_aggressive_accepts_high_leverage(mock_peak, mock_stats, mock_pnl,
     # Check gate 8 specifically
     gate8 = next(g for g in result.gate_results if g["name"] == "leverage_valid")
     assert gate8["passed"] is True
-    assert "8x" in gate8["reason"]
-    assert "3-10x" in gate8["reason"]
+    assert "7x" in gate8["reason"]
+    assert "3-8x" in gate8["reason"]
 
 
 @patch("src.risk.risk_manager.get_open_positions", new_callable=AsyncMock, return_value=[])
@@ -220,7 +220,7 @@ async def test_conservative_rejects_high_leverage(mock_peak, mock_stats, mock_pn
 @patch("src.risk.risk_manager.get_trading_stats", new_callable=AsyncMock, return_value={"total_realized_pnl": 0})
 @patch("src.risk.risk_manager.get_peak_capital", new_callable=AsyncMock, return_value=100)
 async def test_aggressive_accepts_valid_signal(mock_peak, mock_stats, mock_pnl, mock_has_pos, mock_positions):
-    """Aggressive profile accepts signal_strength >= 0.60."""
+    """Aggressive profile accepts signal_strength >= 0.65."""
     client = AsyncMock()
     rm = RiskManager(client, capital=100, is_paper=True, profile=AGGRESSIVE)
     params = PositionParams(
@@ -235,7 +235,7 @@ async def test_aggressive_accepts_valid_signal(mock_peak, mock_stats, mock_pnl, 
     result = await rm.check(
         symbol="BTC/USDT:USDT",
         direction="LONG",
-        signal_strength=0.62,  # passes aggressive (0.60)
+        signal_strength=0.70,  # passes aggressive (0.65)
         position_params=params,
         funding_rate=0.0001,
     )

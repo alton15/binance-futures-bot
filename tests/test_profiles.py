@@ -15,7 +15,7 @@ from config.settings import RISK, SIGNALS
 def test_get_risk_returns_profile_value():
     assert CONSERVATIVE.get_risk("risk_per_trade_pct") == 0.015
     assert NEUTRAL.get_risk("risk_per_trade_pct") == 0.02
-    assert AGGRESSIVE.get_risk("risk_per_trade_pct") == 0.03
+    assert AGGRESSIVE.get_risk("risk_per_trade_pct") == 0.02
 
 
 def test_get_risk_falls_back_to_global():
@@ -25,9 +25,9 @@ def test_get_risk_falls_back_to_global():
 
 
 def test_get_signal_returns_profile_value():
-    assert CONSERVATIVE.get_signal("min_confirming") == 5
+    assert CONSERVATIVE.get_signal("min_confirming") == 4
     assert NEUTRAL.get_signal("min_confirming") == 4
-    assert AGGRESSIVE.get_signal("min_confirming") == 4
+    assert AGGRESSIVE.get_signal("min_confirming") == 5
 
 
 def test_get_signal_falls_back_to_global():
@@ -63,7 +63,7 @@ def test_neutral_leverage_range():
 
 def test_aggressive_leverage_range():
     assert AGGRESSIVE.leverage_min == 3
-    assert AGGRESSIVE.leverage_max == 10
+    assert AGGRESSIVE.leverage_max == 8
 
 
 def test_leverage_tiers_are_sorted():
@@ -79,13 +79,13 @@ def test_profile_is_frozen():
 
 
 def test_signal_strength_ordering():
-    assert CONSERVATIVE.get_risk("signal_strength_min") > NEUTRAL.get_risk("signal_strength_min")
+    assert CONSERVATIVE.get_risk("signal_strength_min") >= NEUTRAL.get_risk("signal_strength_min")
     assert NEUTRAL.get_risk("signal_strength_min") >= AGGRESSIVE.get_risk("signal_strength_min")
 
 
 def test_risk_per_trade_ordering():
     assert CONSERVATIVE.get_risk("risk_per_trade_pct") < NEUTRAL.get_risk("risk_per_trade_pct")
-    assert NEUTRAL.get_risk("risk_per_trade_pct") < AGGRESSIVE.get_risk("risk_per_trade_pct")
+    assert NEUTRAL.get_risk("risk_per_trade_pct") <= AGGRESSIVE.get_risk("risk_per_trade_pct")
 
 
 def test_max_drawdown_ordering():

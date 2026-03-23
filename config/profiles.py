@@ -56,23 +56,23 @@ CONSERVATIVE = ProfileConfig(
         "max_exposure_pct": 0.40,
         "daily_loss_limit_pct": 0.04,
         "max_drawdown_pct": 0.10,
-        "signal_strength_min": 0.70,
+        "signal_strength_min": 0.65,             # 0.70 → 0.65: 거래 빈도 증가 (표본 부족 해소)
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.03,              # 2% → 3% (크립토 변동성 대비)
-        "trailing_activation_atr": 1.0,          # 1x ATR 수익 후 트레일링 활성화
-        "trailing_atr_multiplier": 1.5,          # ATR 기반 동적 트레일링 거리
+        "trailing_stop_pct": 0.03,               # 3% (크립토 변동성 대비)
+        "trailing_activation_atr": 1.5,           # 1.0 → 1.5: 충분한 수익 후 트레일링 활성화
+        "trailing_atr_multiplier": 1.5,           # ATR 기반 동적 트레일링 거리
         "max_hold_hours": 48,
         "liquidation_buffer_pct": 0.30,
         "max_margin_per_trade_pct": 0.12,
     },
     signals={
-        "min_confirming": 5,
-        "min_strength": 0.65,
-        "macd_opposition_penalty": 1.0,          # MACD 반대 시 거부 (강도 × 1.0 감쇄)
-        "low_volume_threshold": 0.5,             # 0.5x avg 미만 거부
-        "low_volume_penalty": 1.0,               # 저볼륨 시 거부
-        "bb_conflict_penalty": 0.20,             # BB 충돌 시 강도 -20%
+        "min_confirming": 4,                      # 5 → 4: 거래 빈도 증가
+        "min_strength": 0.60,                     # 0.65 → 0.60: 약간 완화
+        "macd_opposition_penalty": 1.0,           # MACD 반대 시 거부
+        "low_volume_threshold": 0.5,
+        "low_volume_penalty": 1.0,
+        "bb_conflict_penalty": 0.20,
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 3},
@@ -95,20 +95,20 @@ NEUTRAL = ProfileConfig(
         "signal_strength_min": 0.65,
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.03,              # 2% → 3%
-        "trailing_activation_atr": 1.0,          # 1x ATR 수익 후 활성화
-        "trailing_atr_multiplier": 1.5,          # ATR 기반 동적 트레일링
+        "trailing_stop_pct": 0.03,               # 3%
+        "trailing_activation_atr": 1.2,           # 1.0 → 1.2: 트레일링 손실 방지
+        "trailing_atr_multiplier": 1.2,           # 1.5 → 1.2: 활성화 후 더 타이트하게
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.20,
         "max_margin_per_trade_pct": 0.15,
     },
     signals={
         "min_confirming": 4,
-        "min_strength": 0.60,
-        "macd_opposition_penalty": 0.30,         # MACD 반대 시 강도 -30%
-        "low_volume_threshold": 0.5,             # 0.5x avg 미만
-        "low_volume_penalty": 0.15,              # 저볼륨 시 강도 -15%
-        "bb_conflict_penalty": 0.10,             # BB 충돌 시 강도 -10%
+        "min_strength": 0.55,                    # 0.60 → 0.55: 약간 완화 (거래 빈도↑)
+        "macd_opposition_penalty": 0.30,
+        "low_volume_threshold": 0.5,
+        "low_volume_penalty": 0.15,
+        "bb_conflict_penalty": 0.10,
     },
     leverage_tiers=[
         {"max_volatility": 0.02, "max_leverage": 6},
@@ -124,75 +124,75 @@ AGGRESSIVE = ProfileConfig(
     name="aggressive",
     label="Aggressive",
     risk={
-        "risk_per_trade_pct": 0.03,
+        "risk_per_trade_pct": 0.02,              # 0.03 → 0.02: 손실 규모 축소 (26.7% WR)
         "max_open_positions": 5,
         "max_exposure_pct": 0.70,
         "daily_loss_limit_pct": 0.08,
         "max_drawdown_pct": 0.25,
-        "signal_strength_min": 0.60,
+        "signal_strength_min": 0.65,             # 0.60 → 0.65: 진입 품질 강화
         "sl_atr_multiplier": 2.0,
         "tp_atr_multiplier": 4.0,
-        "trailing_stop_pct": 0.035,             # 2.5% → 3.5%
-        "trailing_activation_atr": 0.8,          # 0.8x ATR (더 빨리 활성화)
-        "trailing_atr_multiplier": 1.2,          # 타이트한 ATR 트레일링
+        "trailing_stop_pct": 0.035,              # 3.5%
+        "trailing_activation_atr": 1.2,           # 0.8 → 1.2: 조기 트레일링 손실 방지
+        "trailing_atr_multiplier": 1.2,           # 타이트한 ATR 트레일링
         "max_hold_hours": 72,
         "liquidation_buffer_pct": 0.15,
         "max_margin_per_trade_pct": 0.15,
     },
     signals={
-        "min_confirming": 4,
-        "min_strength": 0.55,
-        "macd_opposition_penalty": 0.15,         # MACD 반대 시 강도 -15% (느슨)
-        "low_volume_threshold": 0.0,             # 볼륨 필터 없음
+        "min_confirming": 5,                     # 4 → 5: 충분한 확인 필요 (WR 26.7%)
+        "min_strength": 0.60,                    # 0.55 → 0.60: 강화
+        "macd_opposition_penalty": 0.30,         # 0.15 → 0.30: MACD 반대 패널티 강화
+        "low_volume_threshold": 0.0,
         "low_volume_penalty": 0.0,
-        "bb_conflict_penalty": 0.0,              # BB 필터 없음
+        "bb_conflict_penalty": 0.0,
     },
     leverage_tiers=[
-        {"max_volatility": 0.02, "max_leverage": 10},
-        {"max_volatility": 0.04, "max_leverage": 7},
-        {"max_volatility": 0.06, "max_leverage": 5},
+        {"max_volatility": 0.02, "max_leverage": 8},   # 10 → 8
+        {"max_volatility": 0.04, "max_leverage": 6},    # 7 → 6
+        {"max_volatility": 0.06, "max_leverage": 4},    # 5 → 4
         {"max_volatility": float("inf"), "max_leverage": 3},
     ],
     leverage_min=3,
-    leverage_max=10,
+    leverage_max=8,                              # 10 → 8: 손실 제한
 )
 
 SCALP = ProfileConfig(
     name="scalp",
     label="Scalp",
     risk={
-        "risk_per_trade_pct": 0.01,          # 1% (높은 레버리지 보상)
-        "max_open_positions": 5,             # 3 → 5: 스캘핑 기회 확대
+        "risk_per_trade_pct": 0.008,         # 0.01 → 0.008: 이상치 손실 관리 (포지션 축소)
+        "max_open_positions": 3,             # 5 → 3: 집중도 높이기
         "max_exposure_pct": 0.60,
-        "daily_loss_limit_pct": 0.07,        # 5% → 7%: 고빈도 스캘핑 여유
-        "max_drawdown_pct": 0.20,            # 15% → 20%: 누적 드로다운 여유
-        "signal_strength_min": 0.40,         # 0.50 → 0.40: MTF 감쇄 후에도 통과
-        "sl_atr_multiplier": 2.5,            # 2.5x ATR (노이즈 필터링 강화)
-        "tp_atr_multiplier": 4.0,            # 4.0x ATR (R:R 1:1.6 유지)
-        "trailing_stop_pct": 0.025,          # 1.5% → 2.5% (3분봉 노이즈 대비)
-        "trailing_activation_atr": 0.8,      # 0.8x ATR (스캘프는 빠른 활성화)
-        "trailing_atr_multiplier": 1.0,      # 1x ATR 트레일링 거리
+        "daily_loss_limit_pct": 0.07,
+        "max_drawdown_pct": 0.20,
+        "signal_strength_min": 0.45,         # 0.40 → 0.45: 약한 시그널 필터링
+        "sl_atr_multiplier": 3.0,            # 2.5 → 3.0: 노이즈 SL 트리거 감소
+        "tp_atr_multiplier": 3.5,            # 4.0 → 3.5: TP 도달률 향상 (R:R 1:1.17)
+        "trailing_stop_pct": 0.02,           # 0.025 → 0.02: 수익 확보 시 타이트하게 보호
+        "trailing_activation_atr": 1.2,      # 0.8 → 1.2: 충분한 수익 후 트레일링 활성화
+        "trailing_atr_multiplier": 0.8,      # 1.0 → 0.8: ATR 트레일링 더 타이트하게
         "max_hold_hours": 4,
-        "liquidation_buffer_pct": 0.15,      # 20% → 15%: aggressive와 동일
+        "liquidation_buffer_pct": 0.15,
         "max_margin_per_trade_pct": 0.10,
         "analysis_cooldown_seconds": 60,
     },
     signals={
-        "min_confirming": 2,                 # 3 → 2: 3분봉 노이즈 감안, 지표 2개 동의면 충분
-        "min_strength": 0.40,                # 0.50 → 0.40: MTF 0일 때 50% 감쇄 후에도 통과
-        "macd_opposition_penalty": 0.20,     # MACD 반대 시 강도 -20%
-        "low_volume_threshold": 0.0,         # 볼륨 필터 제거 (스파이크 감지가 이미 볼륨 체크)
-        "low_volume_penalty": 0.0,           # aggressive와 동일: 볼륨 패널티 없음
-        "bb_conflict_penalty": 0.0,          # aggressive와 동일: BB 패널티 없음
+        "min_confirming": 3,                 # 2 → 3: 진입 품질 강화 (false entry 줄이기)
+        "min_strength": 0.45,                # 0.40 → 0.45: 약한 시그널 필터링
+        "macd_opposition_penalty": 0.20,
+        "low_volume_threshold": 0.0,
+        "low_volume_penalty": 0.0,
+        "bb_conflict_penalty": 0.0,
     },
     leverage_tiers=[
-        {"max_volatility": 0.02, "max_leverage": 15},
-        {"max_volatility": 0.04, "max_leverage": 12},
-        {"max_volatility": 0.06, "max_leverage": 8},
+        {"max_volatility": 0.02, "max_leverage": 10},   # 15 → 10
+        {"max_volatility": 0.04, "max_leverage": 8},     # 12 → 8
+        {"max_volatility": 0.06, "max_leverage": 6},     # 8 → 6
         {"max_volatility": float("inf"), "max_leverage": 5},
     ],
     leverage_min=5,
-    leverage_max=15,
+    leverage_max=10,                         # 15 → 10: 5x>6x 데이터 기반
 )
 
 # Swing profiles for scheduled pipeline (scan → analyze → trade)

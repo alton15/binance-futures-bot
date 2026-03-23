@@ -27,26 +27,26 @@ class TestScalpProfile:
         assert SCALP.label == "Scalp"
 
     def test_scalp_risk_values(self):
-        assert SCALP.get_risk("risk_per_trade_pct") == 0.01
-        assert SCALP.get_risk("max_open_positions") == 5
+        assert SCALP.get_risk("risk_per_trade_pct") == 0.008
+        assert SCALP.get_risk("max_open_positions") == 3
         assert SCALP.get_risk("max_exposure_pct") == 0.60
         assert SCALP.get_risk("daily_loss_limit_pct") == 0.07
         assert SCALP.get_risk("max_drawdown_pct") == 0.20
-        assert SCALP.get_risk("signal_strength_min") == 0.40
-        assert SCALP.get_risk("sl_atr_multiplier") == 2.5
-        assert SCALP.get_risk("tp_atr_multiplier") == 4.0
-        assert SCALP.get_risk("trailing_stop_pct") == 0.025
+        assert SCALP.get_risk("signal_strength_min") == 0.45
+        assert SCALP.get_risk("sl_atr_multiplier") == 3.0
+        assert SCALP.get_risk("tp_atr_multiplier") == 3.5
+        assert SCALP.get_risk("trailing_stop_pct") == 0.02
         assert SCALP.get_risk("max_hold_hours") == 4
         assert SCALP.get_risk("liquidation_buffer_pct") == 0.15
         assert SCALP.get_risk("max_margin_per_trade_pct") == 0.10
 
     def test_scalp_signal_values(self):
-        assert SCALP.get_signal("min_confirming") == 2
-        assert SCALP.get_signal("min_strength") == 0.40
+        assert SCALP.get_signal("min_confirming") == 3
+        assert SCALP.get_signal("min_strength") == 0.45
 
     def test_scalp_leverage_range(self):
         assert SCALP.leverage_min == 5
-        assert SCALP.leverage_max == 15
+        assert SCALP.leverage_max == 10
 
     def test_scalp_leverage_tiers_sorted(self):
         tiers = SCALP.get_leverage_tiers()

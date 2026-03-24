@@ -79,7 +79,7 @@ RISK = {
     "signal_strength_min": 0.6,
     "liquidation_buffer_pct": 0.30,   # 30% distance to liquidation
     "funding_rate_max": 0.001,        # 0.1% per 8h
-    "min_volume_24h": 50_000_000,     # $50M minimum 24h volume
+    "min_volume_24h": 20_000_000,     # $20M minimum 24h volume (스캘퍼와 동일)
     "min_volatility_pct": 1.5,        # 1.5% minimum daily volatility
     "max_spread_pct": 0.05,           # 0.05% max spread
     "maint_margin_rate": 0.005,       # 0.5% maintenance margin rate

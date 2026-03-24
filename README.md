@@ -198,14 +198,14 @@ Eight technical indicators each vote LONG/SHORT/NEUTRAL, and a weighted composit
 
 | Indicator | Weight | LONG Condition | SHORT Condition | NEUTRAL Condition |
 |-----------|:------:|----------------|-----------------|-------------------|
-| MACD (12/26/9) | 2.0 | Bullish crossover, expanding positive histogram | Bearish crossover, expanding negative histogram | Contracting histogram |
+| MACD (12/26/9) | 2.0 | Bullish crossover, expanding positive histogram, above signal line | Bearish crossover, expanding negative histogram, below signal line | Histogram sign disagrees with position |
 | RSI (14) | 1.5 | Oversold (< 30), below 40 | Overbought (> 70), above 60 | 40-60 range |
 | EMA 200 Trend | 1.5 | Price > 200 EMA (+1% or more) | Price < 200 EMA (-1% or more) | Within ±1% of 200 EMA |
 | Bollinger Bands (20, 2σ) | 1.0 | Below 20% of band | Above 80% of band | 20-80% of band |
 | EMA Cross (9/21) | 1.0 | Golden cross or spread ≥0.3% | Death cross or spread ≥0.3% | EMA convergence (spread <0.3%) |
 | Stochastic (14, 3) | 1.0 | K < 20 oversold or cross up | K > 80 overbought or cross down | K 20-80 range |
-| Volume (SMA 20) | 1.0 | High volume + above 200 EMA | High volume + below 200 EMA | Low volume or average |
-| ADX (14) | 1.0 | ADX ≥ 20 + uptrend | ADX ≥ 20 + downtrend | ADX < 20 (weak trend) |
+| Volume (SMA 20) | 1.0 | Above-avg volume + above 200 EMA | Above-avg volume + below 200 EMA | Below-avg volume |
+| ADX (14) | 1.0 | ADX ≥ 15 + uptrend | ADX ≥ 15 + downtrend | ADX < 15 (weak trend) |
 
 **Signal Decision**:
 ```

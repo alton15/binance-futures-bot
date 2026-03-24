@@ -215,7 +215,7 @@ Tie → NEUTRAL (no entry)
 Strength = winning side score / total weight sum (total weight 10.0)
 ```
 
-**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥4, Aggressive: ≥5, Scalp: ≥3) AND strength ≥ profile minimum AND MTF confirmations ≥ 1 (Scalp: MTF soft — no hard gate, strength penalty only)
+**Pass Criteria**: Confirming indicators ≥ 4 (Conservative: ≥4, Aggressive: ≥5, Scalp: ≥3) AND strength ≥ profile minimum (MTF is soft for all profiles — strength penalty only, no hard gate)
 
 **Signal Quality Filters** (per-profile penalties):
 
@@ -228,10 +228,10 @@ Strength = winning side score / total weight sum (total weight 10.0)
 - **Reject**: Signal immediately rejected when penalty is 1.0 or volume below threshold
 - **-N%**: Strength attenuated by N%, then re-checked against minimum strength threshold
 
-**Multi-Timeframe Adjustment**:
+**Multi-Timeframe Adjustment** (soft penalty for all profiles):
 - Both 15-min + 4-hour confirm same direction → strength × 1.15
 - Only one confirms same direction → no adjustment (default)
-- Both oppose direction → strength × 0.5 + **entry blocked** (Scalp: penalty only, no block)
+- Both oppose direction → strength × 0.5 (no hard block — reduced strength may still pass if above minimum)
 
 ### 10-Gate Risk Management
 
@@ -333,7 +333,7 @@ Defined as frozen dataclasses in `config/profiles.py`. Each profile has differen
 | Trailing activation | 1.5x ATR | 1.2x ATR | 1.2x ATR | 1.2x ATR |
 | Liquidation buffer | 30% | 20% | 15% | 15% |
 | Max holding time | 48 hours | 72 hours | 72 hours | 4 hours |
-| Analysis timeframe | 1h + 15m/4h | 1h + 15m/4h | 1h + 15m/4h | 3m + 1m/5m (soft MTF) |
+| Analysis timeframe | 1h + 15m/4h (soft MTF) | 1h + 15m/4h (soft MTF) | 1h + 15m/4h (soft MTF) | 3m + 1m/5m (soft MTF) |
 
 ### Multi-Profile Mode
 

@@ -57,9 +57,17 @@ async def scan_coins(
     candidates: list[CoinCandidate] = []
     excluded = set(MARKET.get("exclude_symbols", []))
 
+    # Diagnostic counters for filter rejection tracking
+    filter_counts = {
+        "no_ticker": 0, "excluded": 0, "volume": 0,
+        "price_zero": 0, "volatility": 0, "spread": 0,
+        "funding": 0, "duplicate": 0, "cooldown": 0,
+    }
+
     for symbol in all_symbols:
         ticker = tickers.get(symbol)
         if not ticker:
+            filter_counts["no_ticker"] += 1
             continue
 
         # Extract base asset
@@ -67,11 +75,13 @@ async def scan_coins(
 
         # Exclude list
         if symbol in excluded or base + "USDT" in excluded:
+            filter_counts["excluded"] += 1
             continue
 
         # Filter 1: Volume
         volume_24h = float(ticker.get("quoteVolume", 0) or 0)
         if volume_24h < RISK["min_volume_24h"]:
+            filter_counts["volume"] += 1
             continue
 
         # Filter 2: Volatility (high - low) / close
@@ -79,10 +89,12 @@ async def scan_coins(
         low = float(ticker.get("low", 0) or 0)
         last = float(ticker.get("last", 0) or 0)
         if last <= 0:
+            filter_counts["price_zero"] += 1
             continue
 
         volatility = (high - low) / last if last > 0 else 0
         if volatility < RISK["min_volatility_pct"] / 100:
+            filter_counts["volatility"] += 1
             continue
 
         # Filter 3: Spread
@@ -90,6 +102,7 @@ async def scan_coins(
         ask = float(ticker.get("ask", 0) or 0)
         spread = (ask - bid) / last if last > 0 and bid > 0 and ask > 0 else 0
         if spread > RISK["max_spread_pct"] / 100:
+            filter_counts["spread"] += 1
             continue
 
         # Filter 4: Funding rate
@@ -101,15 +114,18 @@ async def scan_coins(
             pass
 
         if abs(funding_rate) > RISK["funding_rate_max"]:
+            filter_counts["funding"] += 1
             continue
 
         # Filter 5: No duplicate position
         if await has_position_for_symbol(symbol, is_paper=is_paper):
+            filter_counts["duplicate"] += 1
             continue
 
         # Filter 6: Not recently analyzed
         cooldown = SCANNER.get("analysis_cooldown_hours", 4)
         if await was_recently_analyzed(symbol, cooldown_hours=cooldown):
+            filter_counts["cooldown"] += 1
             continue
 
         # Composite score
@@ -141,6 +157,11 @@ async def scan_coins(
     # Sort by score descending
     candidates.sort(key=lambda c: c.scan_score, reverse=True)
     result = candidates[:max_candidates]
+
+    # Log filter rejection breakdown for debugging
+    rejected = {k: v for k, v in filter_counts.items() if v > 0}
+    if rejected:
+        logger.info("Scan filter breakdown: %s", rejected)
 
     logger.info(
         "Scan complete: %d/%d coins passed filters",

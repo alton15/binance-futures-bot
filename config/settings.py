@@ -110,7 +110,7 @@ LEVERAGE_TIERS = [
 SCANNER = {
     "max_candidates": 30,
     "scan_interval_minutes": 30,
-    "analysis_cooldown_hours": 2,
+    "analysis_cooldown_hours": 0.5,    # 30분 (스캔 주기와 동일)
 }
 
 # -- Schedule ------------------------------------------------------

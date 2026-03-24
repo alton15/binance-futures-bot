@@ -187,12 +187,18 @@ def _vote_macd(ind: IndicatorSet) -> tuple[str, str]:
     ):
         return "SHORT", "bearish crossover"
 
-    # Histogram direction - only vote if histogram is expanding
+    # Histogram direction - expanding histogram is strongest non-crossover signal
     if ind.macd_hist is not None and ind.prev_macd_hist is not None:
         if ind.macd > ind.macd_signal and ind.macd_hist > 0 and ind.macd_hist > ind.prev_macd_hist:
             return "LONG", "histogram expanding positive"
         elif ind.macd < ind.macd_signal and ind.macd_hist < 0 and ind.macd_hist < ind.prev_macd_hist:
             return "SHORT", "histogram expanding negative"
+
+    # MACD position relative to signal line (weaker but directional)
+    if ind.macd > ind.macd_signal and ind.macd_hist is not None and ind.macd_hist > 0:
+        return "LONG", "above signal line (bullish)"
+    elif ind.macd < ind.macd_signal and ind.macd_hist is not None and ind.macd_hist < 0:
+        return "SHORT", "below signal line (bearish)"
 
     return "NEUTRAL", "no signal"
 
@@ -331,7 +337,7 @@ def _vote_volume(ind: IndicatorSet) -> tuple[str, str]:
 
     ratio = ind.volume / ind.volume_sma
 
-    if ratio > 1.5:
+    if ratio > 1.0:
         # High volume - confirms current price direction vs 200 EMA
         if ind.ema_slow is not None and ind.close > ind.ema_slow:
             return "LONG", f"high volume bullish ({ratio:.1f}x avg)"
@@ -348,7 +354,7 @@ def _vote_adx(ind: IndicatorSet) -> tuple[str, str]:
     if ind.adx is None:
         return "NEUTRAL", "no data"
 
-    if ind.adx >= 20:
+    if ind.adx >= 15:
         # Strong trend - agree with EMA trend
         if ind.ema_fast is not None and ind.ema_slow is not None:
             if ind.ema_fast > ind.ema_slow:

@@ -224,9 +224,9 @@ def test_bollinger_tightened_zones():
     assert bb_vote["direction"] == "LONG"
 
 
-def test_macd_requires_expanding_histogram():
-    """MACD histogram fallback requires histogram to be expanding."""
-    # Histogram positive but shrinking → NEUTRAL
+def test_macd_signal_line_position():
+    """MACD votes based on position relative to signal line."""
+    # MACD above signal, histogram positive but shrinking → LONG (position vote)
     ind = _make_indicators(
         macd=100, macd_signal=90, macd_hist=10,
         prev_macd=95, prev_macd_signal=90,  # no crossover
@@ -234,9 +234,10 @@ def test_macd_requires_expanding_histogram():
     )
     signal = generate_signal(ind)
     macd_vote = signal.details["macd"]
-    assert macd_vote["direction"] == "NEUTRAL"
+    assert macd_vote["direction"] == "LONG"
+    assert "above signal line" in macd_vote["reason"]
 
-    # Histogram positive and expanding → LONG
+    # Histogram positive and expanding → LONG (stronger: expanding)
     ind = _make_indicators(
         macd=100, macd_signal=90, macd_hist=20,
         prev_macd=95, prev_macd_signal=90,
@@ -245,14 +246,33 @@ def test_macd_requires_expanding_histogram():
     signal = generate_signal(ind)
     macd_vote = signal.details["macd"]
     assert macd_vote["direction"] == "LONG"
+    assert "expanding" in macd_vote["reason"]
+
+    # MACD above signal but histogram negative → NEUTRAL (mixed signal)
+    ind = _make_indicators(
+        macd=100, macd_signal=90, macd_hist=-5,
+        prev_macd=95, prev_macd_signal=90,
+        prev_macd_hist=-10,
+    )
+    signal = generate_signal(ind)
+    macd_vote = signal.details["macd"]
+    assert macd_vote["direction"] == "NEUTRAL"
 
 
 def test_adx_threshold_lowered():
-    """ADX threshold lowered to 20."""
-    # ADX=22 should now vote (was NEUTRAL with old threshold 25)
+    """ADX threshold lowered to 15."""
+    # ADX=17 should vote (above 15 threshold)
     ind = _make_indicators(
-        adx=22, ema_fast=50100, ema_slow=49000,
+        adx=17, ema_fast=50100, ema_slow=49000,
     )
     signal = generate_signal(ind)
     adx_vote = signal.details["adx"]
     assert adx_vote["direction"] == "LONG"
+
+    # ADX=14 should be NEUTRAL (below 15 threshold)
+    ind = _make_indicators(
+        adx=14, ema_fast=50100, ema_slow=49000,
+    )
+    signal = generate_signal(ind)
+    adx_vote = signal.details["adx"]
+    assert adx_vote["direction"] == "NEUTRAL"

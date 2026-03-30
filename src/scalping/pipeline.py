@@ -12,6 +12,7 @@ from src.clients.binance_rest import BinanceClient
 from src.strategy.analyzer import analyze_coin
 from src.risk.risk_manager import RiskManager
 from src.risk.leverage_calc import calculate_leverage, calculate_position
+from src.risk.perspectives import evaluate_multi_perspective
 from src.trading.paper_trader import PaperTrader
 from src.db.models import get_trading_stats, get_peak_capital
 from src.notifications.notifier import notify_trade
@@ -137,6 +138,24 @@ class ScalpPipeline:
             if position_params.position_size <= 0:
                 logger.info("Position size zero for %s, skipping", symbol)
                 return
+
+            # --- Step 3b: Multi-perspective risk scoring ---
+            perspective = evaluate_multi_perspective(
+                signal_strength=analysis["strength"],
+                direction=analysis["direction"],
+                adx=analysis.get("adx"),
+                rsi=analysis.get("rsi"),
+                atr=atr,
+                close_price=analysis.get("close_price"),
+                volatility_24h=volatility_24h,
+                funding_rate=funding_rate,
+            )
+            if perspective.scale_factor != 1.0:
+                position_params = position_params.scale(perspective.scale_factor)
+                logger.info(
+                    "Perspective scaled %s position: %.2fx (score=%.2f)",
+                    symbol, perspective.scale_factor, perspective.final_score,
+                )
 
             # --- Step 4: Risk check ---
             risk_mgr = RiskManager(

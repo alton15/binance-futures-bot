@@ -9,6 +9,7 @@ from config.settings import MARKET, SIGNALS
 from src.clients.binance_rest import BinanceClient
 from src.indicators.calculator import compute_indicators
 from src.indicators.signals import generate_signal, Signal
+from src.strategy.adversarial import validate_signal
 from src.db.models import save_signal, save_indicator_snapshot
 
 if TYPE_CHECKING:
@@ -114,6 +115,29 @@ async def analyze_coin(
         stoch_d=indicators.stoch_d,
     )
 
+    # Adversarial validation (Bull/Bear debate)
+    adversarial_rejected = False
+    if primary_signal.direction != "NEUTRAL":
+        adv_result = validate_signal(
+            direction=primary_signal.direction,
+            details=primary_signal.details,
+            rsi=indicators.rsi or 50.0,
+            adx=indicators.adx or 25.0,
+        )
+        if not adv_result.passed:
+            adversarial_rejected = True
+            logger.info(
+                "Adversarial rejected %s %s: %d opposing indicators",
+                symbol, primary_signal.direction,
+                adv_result.bear_count or adv_result.bull_count,
+            )
+        elif adv_result.penalty > 0:
+            adjusted_strength *= (1 - adv_result.penalty)
+            logger.info(
+                "Adversarial penalty %s: -%.1f%%, new strength=%.2f",
+                symbol, adv_result.penalty * 100, adjusted_strength,
+            )
+
     # Use profile-specific signal thresholds if available
     min_confirming = profile.get_signal("min_confirming") if profile else SIGNALS["min_confirming"]
     min_strength = profile.get_signal("min_strength") if profile else SIGNALS["min_strength"]
@@ -131,6 +155,7 @@ async def analyze_coin(
         "mtf_confirms": mtf_confirms,
         "is_actionable": (
             primary_signal.direction != "NEUTRAL"
+            and not adversarial_rejected
             and primary_signal.confirming_count >= min_confirming
             and adjusted_strength >= min_strength
         ),

@@ -166,6 +166,23 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS situation_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                situation_text TEXT NOT NULL,
+                indicator_snapshot TEXT NOT NULL DEFAULT '{}',
+                strength REAL NOT NULL DEFAULT 0,
+                confirming_count INTEGER DEFAULT 0,
+                realized_pnl REAL,
+                exit_reason TEXT,
+                is_win INTEGER DEFAULT 0,
+                profile TEXT NOT NULL DEFAULT 'neutral',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
         # Indexes
         await db.execute("CREATE INDEX IF NOT EXISTS idx_coins_symbol ON coins(symbol)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)")
@@ -180,6 +197,8 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_pnl_profile ON pnl_snapshots(profile)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_funding_symbol ON funding_payments(symbol)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_indicators_symbol ON indicator_snapshots(symbol, timeframe)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_situations_profile ON situation_outcomes(profile)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_situations_direction ON situation_outcomes(direction)")
 
         # Migration: add profile column to existing tables
         for table in ("trades", "positions", "orders", "pnl_snapshots"):
@@ -802,3 +821,53 @@ async def get_risk_summary(
             "max_single_margin": round(max_margin, 4),
             "today_realized_pnl": round(today_pnl, 4),
         }
+
+
+# -- Situation Outcomes ------------------------------------------------
+
+
+async def save_situation_outcome(
+    symbol: str,
+    direction: str,
+    situation_text: str,
+    indicator_snapshot: str = "{}",
+    strength: float = 0,
+    confirming_count: int = 0,
+    realized_pnl: float | None = None,
+    exit_reason: str = "",
+    is_win: int = 0,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> int:
+    """Save a situation outcome for BM25 memory. Returns situation ID."""
+    async with aiosqlite.connect(str(db_path)) as db:
+        cursor = await db.execute(
+            """INSERT INTO situation_outcomes
+               (symbol, direction, situation_text, indicator_snapshot,
+                strength, confirming_count, realized_pnl, exit_reason,
+                is_win, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (symbol, direction, situation_text, indicator_snapshot,
+             strength, confirming_count, realized_pnl, exit_reason,
+             is_win, profile),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def get_situation_outcomes(
+    profile: str = "neutral",
+    limit: int = 200,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Get stored situation outcomes for BM25 retrieval."""
+    async with aiosqlite.connect(str(db_path)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM situation_outcomes
+               WHERE profile=?
+               ORDER BY created_at DESC LIMIT ?""",
+            (profile, limit),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

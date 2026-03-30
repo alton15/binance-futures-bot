@@ -1,6 +1,6 @@
 # binance-futures-bot
 
-기술적 분석 기반 Binance USDT-M 선물 자동 매매 봇. AI 불필요 — 순수 테크니컬 분석.
+기술적 분석 기반 Binance USDT-M 선물 자동 매매 봇. AI 불필요 — 순수 테크니컬 분석 + TradingAgents 영감의 규칙 기반 지능형 필터.
 
 ## Tech Stack
 
@@ -10,7 +10,8 @@
 - **APScheduler**: 스캔/매매 스케줄링
 - **websockets**: 실시간 가격 스트림 (miniTicker, markPrice, bookTicker)
 - **aiosqlite**: 비동기 SQLite (거래 기록)
-- **httpx**: HTTP 클라이언트
+- **httpx**: HTTP 클라이언트 (Discord, Fear & Greed API)
+- **rank-bm25**: BM25 유사도 기반 상황 메모리
 - **Docker**: 컨테이너 배포 (2서비스: bot + scalp)
 
 ## Architecture
@@ -19,9 +20,10 @@
 [스윙] APScheduler (30분 주기 스캔)
   -> scanner/ (8개 필터로 코인 스캔)
     -> indicators/ (14개 기술 지표 계산)
-      -> strategy/ (분석 + 오케스트레이션)
-        -> risk/ (10-gate 리스크 관리 + 레버리지 계산)
+      -> strategy/ (분석 + 센티먼트 + 적대적 검증 + 오케스트레이션)
+        -> risk/ (멀티 관점 스코어링 + 10-gate 리스크 관리 + 레버리지 계산)
           -> trading/ (페이퍼/실전 매매 + 5분 REST 모니터링)
+            -> memory/ (BM25 상황 메모리 + Reflection)
             -> db/ (거래 기록)
             -> notifications/ (Discord 웹훅 알림)
 
@@ -40,15 +42,16 @@ config/
 src/
   main.py            # CLI 엔트리포인트 (futuresbot 커맨드)
   clients/           # Binance REST & WebSocket 클라이언트
-  scanner/           # 코인 스캐너 (8개 필터)
+  scanner/           # 코인 스캐너 (8개 필터) + 센티먼트 필터 (Fear & Greed)
   indicators/        # 14개 기술 지표 (RSI, MACD, BB 등)
-  strategy/          # 분석기, 오케스트레이터 (멀티 프로필 병렬 실행)
-  risk/              # 리스크 매니저 (10-gate), 레버리지 계산기 (수수료 모델링)
+  strategy/          # 분석기, 적대적 검증, Reflection, 오케스트레이터
+  memory/            # BM25 상황 메모리 (과거 매매 학습)
+  risk/              # 리스크 매니저 (10-gate), 멀티 관점 스코어링, 레버리지 계산기
   trading/           # 페이퍼 트레이더, 주문 실행 (수수료 차감), 스윙 포지션 모니터
   scalping/          # 이벤트 드리븐 스캘핑 (watcher, pipeline, monitor)
-  db/models.py       # 8개 테이블 + CRUD
+  db/models.py       # 10개 테이블 + CRUD
   notifications/     # Discord 웹훅 (2채널, 멀티 프로필 비교 리포트)
-tests/               # 169개 단위 테스트 (12개 파일)
+tests/               # 247개 단위 테스트 (16개 파일)
 Dockerfile
 docker-compose.yml   # 2개 서비스 (bot + scalp)
 ```
@@ -58,7 +61,7 @@ docker-compose.yml   # 2개 서비스 (bot + scalp)
 ### 1. Code Organization
 
 - 도메인별 모듈 분리 (scanner → indicators → strategy → risk → trading)
-- 파이프라인 순서 유지: 스캔 → 분석 → 리스크 → 매매
+- 파이프라인 순서 유지: 스캔 → 분석(센티먼트+적대적검증) → 리스크(멀티관점) → 매매 → 메모리/Reflection
 - Type hints 필수
 
 ### 2. Code Style
@@ -79,7 +82,7 @@ docker-compose.yml   # 2개 서비스 (bot + scalp)
 
 ### 4. Testing
 
-- `python -m pytest tests/` 로 실행 (169개 테스트)
+- `python -m pytest tests/` 로 실행 (247개 테스트)
 - 새 지표/전략 추가 시 반드시 테스트 작성
 - 거래소 API는 mock 처리
 

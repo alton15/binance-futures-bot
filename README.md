@@ -14,6 +14,8 @@ Automated Binance USDT-M futures trading bot based on technical analysis
 
 A Binance futures automated trading bot that operates purely on technical indicator algorithms without any AI. No separate AI subscription is required. It automates the entire process from coin discovery to signal generation, risk management, order execution, and position monitoring. It can run on a local or cloud server at no additional cost.
 
+Incorporates multi-agent trading firm patterns (inspired by [TradingAgents](https://github.com/TauricResearch/TradingAgents)) — adversarial signal validation, situation memory, sentiment filtering, multi-perspective risk scoring, and post-trade reflection — all implemented as deterministic, rule-based systems without LLMs.
+
 ## Key Features
 
 - **Technical Analysis**: RSI, MACD, Bollinger Bands, EMA (9/21/200), ATR, ADX, Stochastic — 8-indicator weighted voting + NEUTRAL dead zone filtering + per-profile signal quality filters
@@ -26,6 +28,11 @@ A Binance futures automated trading bot that operates purely on technical indica
 - **Fee Modeling**: Round-trip taker fee (0.08%) factored into position sizing
 - **10-Gate Risk Management**: Margin-based exposure limits, daily loss caps, drawdown blocking, and more — sequential validation
 - **Signal Quality Filters**: MACD opposition / low volume / BB conflict detection → per-profile strength attenuation/rejection
+- **Adversarial Validation**: Bull/Bear debate — counts opposing indicators to reject false signals (4+ opposing = reject)
+- **Sentiment Filter**: Fear & Greed Index contrarian filter — fear boosts LONG, greed boosts SHORT
+- **Multi-Perspective Risk**: 3-viewpoint scoring (aggressive/neutral/conservative) → position size 0.6x~1.1x adjustment
+- **BM25 Situation Memory**: Stores past trade situations, retrieves similar ones via BM25 — low win rate (<40%) reduces position 30%
+- **Reflection System**: Post-trade pattern analysis across 5 dimensions (RSI/ADX/strength/direction/exit reason) → actionable insights
 - **ATR-Based Trailing Stop**: Activates after ATR x activation profit reached, locks in profit on ATR x multiplier retracement
 - **Per-Position Margin Cap**: Limited to 10-15% of capital, enabling entry on large-cap coins (BTC/ETH)
 - **Paper / Live Mode**: Switch between simulated and real trading with a single environment variable
@@ -53,15 +60,21 @@ binance-futures-bot/
 │   │   ├── binance_rest.py      # ccxt binanceusdm client (3x exponential backoff)
 │   │   └── binance_ws.py        # WebSocket real-time stream (auto-reconnect)
 │   ├── scanner/
-│   │   └── coin_scanner.py      # Volume/volatility-based coin discovery (8 filters)
+│   │   ├── coin_scanner.py      # Volume/volatility-based coin discovery (8 filters)
+│   │   └── sentiment_filter.py  # Fear & Greed Index contrarian filter (30m cache)
 │   ├── indicators/
 │   │   ├── calculator.py        # pandas-ta technical indicator calculation (14 indicators)
 │   │   └── signals.py           # 8-indicator weighted voting → trade signal generation
 │   ├── strategy/
 │   │   ├── analyzer.py          # Per-coin comprehensive analysis + multi-timeframe confirmation
+│   │   ├── adversarial.py       # Bull/Bear adversarial signal validation
+│   │   ├── reflection.py        # Post-trade pattern analysis and learning
 │   │   └── orchestrator.py      # Scan → Analyze → Risk → Execute pipeline
+│   ├── memory/
+│   │   └── situation_memory.py  # BM25-based trading situation memory
 │   ├── risk/
 │   │   ├── risk_manager.py      # 10-gate margin-based risk validation
+│   │   ├── perspectives.py      # Multi-perspective risk scoring (3 viewpoints)
 │   │   └── leverage_calc.py     # Dynamic leverage + position sizing (fee modeling)
 │   ├── trading/
 │   │   ├── paper_trader.py      # Simulated trading (no API calls)
@@ -72,10 +85,10 @@ binance-futures-bot/
 │   │   ├── pipeline.py          # Spike → Analyze → Risk → Execute pipeline
 │   │   └── monitor.py           # 1-second WebSocket tick monitoring (ultra-short-term exit)
 │   ├── db/
-│   │   └── models.py            # 8 tables + CRUD (aiosqlite)
+│   │   └── models.py            # 10 tables + CRUD (aiosqlite)
 │   └── notifications/
 │       └── notifier.py          # Discord webhook notifications (2 channels)
-├── tests/                       # 169 unit tests (12 files)
+├── tests/                       # 247 unit tests (16 files)
 ├── Dockerfile
 ├── docker-compose.yml           # 2 services (bot + scalp)
 ├── pyproject.toml
@@ -170,8 +183,8 @@ caffeinate -i futuresbot run --paper --loop
 
 ```mermaid
 graph TD
-    SCAN["<b>1. SCAN</b><br/>553+ USDT-M symbols<br/>8 filters → top 30"] --> ANALYZE["<b>2. ANALYZE</b> (per coin)<br/>8 indicators weighted voting<br/>Multi-timeframe confirmation<br/>Signal quality filters"]
-    ANALYZE --> RISK["<b>3. RISK CHECK</b> (10-Gate)<br/>Strength → Positions → Daily Loss<br/>→ Drawdown → Margin → Leverage<br/>→ Liquidation → Funding"]
+    SCAN["<b>1. SCAN</b><br/>553+ USDT-M symbols<br/>8 filters → top 30"] --> ANALYZE["<b>2. ANALYZE</b> (per coin)<br/>8 indicators weighted voting<br/>MTF + Sentiment + Quality filters<br/>Adversarial validation (Bull/Bear)"]
+    ANALYZE --> RISK["<b>3. RISK CHECK</b> (10-Gate)<br/>Multi-perspective scoring (3 viewpoints)<br/>Strength → Positions → Daily Loss<br/>→ Drawdown → Margin → Leverage<br/>→ Liquidation → Funding"]
     RISK -->|Pass| EXEC["<b>4. EXECUTE</b><br/>Paper: DB record<br/>Live: Isolated margin + SL/TP"]
     RISK -->|Fail| REJECT[Trade Rejected]
     EXEC --> MON["<b>MONITOR</b> (5-min cycle)<br/>7 exit conditions<br/>Trailing stop update"]
@@ -232,6 +245,77 @@ Strength = winning side score / total weight sum (total weight 10.0)
 - Both 15-min + 4-hour confirm same direction → strength × 1.15
 - Only one confirms same direction → no adjustment (default)
 - Both oppose direction → strength × 0.5 (no hard block — reduced strength may still pass if above minimum)
+
+### Intelligent Signal Processing (TradingAgents-Inspired)
+
+Five additional layers inspired by [TradingAgents](https://github.com/TauricResearch/TradingAgents) multi-agent patterns, all implemented as deterministic rule-based systems (no LLM required):
+
+#### 1. Sentiment Filter (Fear & Greed Index)
+
+Applied after MTF confirmation. Uses the [alternative.me Fear & Greed Index](https://alternative.me/crypto/fear-and-greed-index/) with contrarian logic:
+
+| Sentiment | LONG Effect | SHORT Effect |
+|-----------|:-----------:|:------------:|
+| Extreme Fear (0-20) | **+10%** boost | -10% penalty |
+| Fear (21-35) | **+5%** boost | -5% penalty |
+| Neutral (36-64) | No change | No change |
+| Greed (65-79) | -5% penalty | **+5%** boost |
+| Extreme Greed (80-100) | -10% penalty | **+10%** boost |
+
+30-minute cache to avoid API rate limits. Trading continues normally if API is unreachable.
+
+#### 2. Adversarial Validation (Bull/Bear Debate)
+
+Applied after quality filters. Counts indicators voting against the signal direction:
+
+- Each opposing indicator: **-5%** strength penalty
+- RSI at extreme opposite (LONG with RSI>75, SHORT with RSI<25): **-10%** additional penalty
+- Weak trend (ADX < 15): penalty reduced proportionally (opposition is less meaningful in choppy markets)
+- **4+ opposing indicators → signal rejected** (is_actionable = false)
+
+#### 3. Multi-Perspective Risk Scoring
+
+Applied after position sizing, before 10-gate risk check. Three perspectives evaluate each trade:
+
+| Perspective | Weight | Focus |
+|-------------|:------:|-------|
+| Aggressive (25%) | Signal strength, trend, volatility as opportunity |
+| Neutral (50%) | Balanced risk/reward assessment |
+| Conservative (25%) | Volatility risk, RSI extremes, funding cost |
+
+**Score → Position Size Scale:**
+- ≥ 0.70 → **1.1x** (slight increase)
+- ≥ 0.55 → **1.0x** (normal)
+- ≥ 0.40 → **0.8x** (reduced)
+- < 0.40 → **0.6x** (heavily reduced)
+
+#### 4. BM25 Situation Memory
+
+Stores past trading situations as text descriptions and retrieves similar ones using BM25 lexical similarity:
+
+- Entry conditions (RSI bucket, ADX bucket, indicator directions, keywords) serialized to text
+- On position close: outcome (P&L, exit reason) recorded with situation text
+- On new signal: top-5 similar past situations retrieved via BM25
+- **Similar situation win rate < 40% → position size reduced 30%**
+- Minimum 5 stored situations required before influencing decisions
+- Profile-isolated (neutral memory doesn't affect aggressive decisions)
+
+#### 5. Reflection System
+
+Analyzes closed positions across 5 dimensions to discover patterns:
+
+| Dimension | Buckets |
+|-----------|---------|
+| RSI at entry | oversold / low / neutral / high / overbought |
+| ADX at entry | weak / moderate / strong |
+| Signal strength | weak / moderate / strong / very_strong |
+| Direction | LONG / SHORT |
+| Exit reason | take_profit / stop_loss / trailing_stop / ... |
+
+- Win rate < 35% per bucket → **negative insight** (warns before entry)
+- Win rate > 65% per bucket → **positive insight** (confirms conviction)
+- Insights stored in DB and accumulate over time
+- Requires minimum 5 samples per bucket to generate insights
 
 ### 10-Gate Risk Management
 
@@ -385,7 +469,7 @@ Split into 2 webhook channels:
   3. Risk — Daily loss limit utilization, margin/exposure status
   4. Recent Trades — Recent trade list + P&L
 
-## DB Schema (8 Tables)
+## DB Schema (10 Tables)
 
 | Table | Purpose |
 |-------|---------|
@@ -397,6 +481,8 @@ Split into 2 webhook channels:
 | `pnl_snapshots` | Daily P&L snapshots (peak capital, drawdown tracking) |
 | `funding_payments` | Funding fee collection/payment records |
 | `indicator_snapshots` | Technical indicator history (for analysis) |
+| `situation_outcomes` | BM25 situation memory (past trade conditions + outcomes) |
+| `reflection_insights` | Discovered patterns from post-trade analysis |
 
 Supports per-profile queries (filtered by paper/live + profile name).
 
@@ -434,7 +520,7 @@ Shape: `VM.Standard.A1.Flex` (ARM), Image: Ubuntu 22.04
 ## Testing
 
 ```bash
-# All tests (169)
+# All tests (247)
 pytest tests/ -v
 
 # Individual modules
@@ -450,6 +536,11 @@ pytest tests/test_notifier.py -v            # Notification formatting (7)
 pytest tests/test_order_executor.py -v      # Order execution + fees (3)
 pytest tests/test_position_monitor.py -v    # Trailing stop + exit (13)
 pytest tests/test_scalping.py -v            # Scalping full suite (37)
+pytest tests/test_adversarial.py -v         # Adversarial validation (12)
+pytest tests/test_situation_memory.py -v    # BM25 situation memory (13)
+pytest tests/test_sentiment_filter.py -v    # Sentiment filter (18)
+pytest tests/test_risk_perspectives.py -v   # Multi-perspective risk (20)
+pytest tests/test_reflection.py -v          # Reflection system (15)
 ```
 
 ## Tech Stack
@@ -463,7 +554,8 @@ pytest tests/test_scalping.py -v            # Scalping full suite (37)
 | Database | aiosqlite | Async SQLite |
 | Scheduler | APScheduler | Periodic job execution |
 | Real-time Stream | websockets | Mark price, mini ticker, book ticker |
-| HTTP Client | httpx | Discord webhook delivery |
+| Situation Memory | rank-bm25 | BM25 lexical similarity for past trade matching |
+| HTTP Client | httpx | Discord webhook delivery, Fear & Greed API |
 | Environment Variables | python-dotenv | .env file management |
 | Container | Docker | 2-service deployment (bot + scalp) |
 

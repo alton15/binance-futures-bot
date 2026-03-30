@@ -7,6 +7,9 @@ venv/
 data/
 *.db
 
+# Docs (auto-generated plans, not source of truth)
+docs/
+
 # Python
 __pycache__/
 *.py[cod]

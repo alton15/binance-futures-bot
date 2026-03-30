@@ -48,18 +48,37 @@ class OrderExecutor:
             return {"success": False, "error": "Invalid position size"}
 
         try:
+            # Ensure markets loaded for precision data
+            await self.client.ensure_markets_loaded()
+
+            # Apply exchange-specific precision to all values
+            precise_size = self.client.amount_to_precision(symbol, params.position_size)
+            precise_sl = self.client.price_to_precision(symbol, params.sl_price)
+            precise_tp = self.client.price_to_precision(symbol, params.tp_price)
+
+            if precise_size <= 0:
+                return {"success": False, "error": "Position size rounds to zero"}
+
+            precision_info = self.client.get_market_precision(symbol)
+            logger.info(
+                "Precision [%s]: size %.8f→%.8f, SL %.8f→%.8f, TP %.8f→%.8f (market: %s)",
+                symbol, params.position_size, precise_size,
+                params.sl_price, precise_sl, params.tp_price, precise_tp,
+                precision_info,
+            )
+
             # Set margin mode and leverage
             await self.client.set_margin_mode(symbol, "isolated")
             await self.client.set_leverage(symbol, params.leverage)
 
-            # Place market order
+            # Place market order with precise amount
             side = "buy" if direction == "LONG" else "sell"
             order = await self.client.create_market_order(
-                symbol, side, params.position_size,
+                symbol, side, precise_size,
             )
 
             fill_price = float(order.get("average", entry_price) or entry_price)
-            fill_size = float(order.get("filled", params.position_size) or params.position_size)
+            fill_size = float(order.get("filled", precise_size) or precise_size)
             order_id = order.get("id", "")
 
             # Save trade
@@ -103,11 +122,12 @@ class OrderExecutor:
                 profile=self.profile_name,
             )
 
-            # Place SL order
+            # Place SL order (with precise price)
             sl_side = "sell" if direction == "LONG" else "buy"
+            precise_fill = self.client.amount_to_precision(symbol, fill_size)
             try:
                 sl_order = await self.client.create_stop_loss(
-                    symbol, sl_side, fill_size, params.sl_price,
+                    symbol, sl_side, precise_fill, precise_sl,
                 )
                 await save_order(
                     symbol=symbol,
@@ -115,17 +135,17 @@ class OrderExecutor:
                     order_type="stop_loss",
                     side=sl_side,
                     size=fill_size,
-                    price=params.sl_price,
+                    price=precise_sl,
                     exchange_order_id=str(sl_order.get("id", "")),
                     is_paper=False,
                 )
             except Exception as e:
                 logger.warning("Failed to place SL for %s: %s", symbol, e)
 
-            # Place TP order
+            # Place TP order (with precise price)
             try:
                 tp_order = await self.client.create_take_profit(
-                    symbol, sl_side, fill_size, params.tp_price,
+                    symbol, sl_side, precise_fill, precise_tp,
                 )
                 await save_order(
                     symbol=symbol,
@@ -133,7 +153,7 @@ class OrderExecutor:
                     order_type="take_profit",
                     side=sl_side,
                     size=fill_size,
-                    price=params.tp_price,
+                    price=precise_tp,
                     exchange_order_id=str(tp_order.get("id", "")),
                     is_paper=False,
                 )
@@ -141,9 +161,9 @@ class OrderExecutor:
                 logger.warning("Failed to place TP for %s: %s", symbol, e)
 
             logger.info(
-                "Live trade: %s %s %.6f @ %.4f (lev=%dx) [%s]",
+                "Live trade: %s %s %s @ %s (lev=%dx) SL=%s TP=%s [%s]",
                 direction, symbol, fill_size, fill_price,
-                params.leverage, order_id,
+                params.leverage, precise_sl, precise_tp, order_id,
             )
 
             return {
@@ -182,9 +202,11 @@ class OrderExecutor:
             # Cancel existing SL/TP orders
             await self.client.cancel_all_orders(symbol)
 
-            # Close with market order
+            # Close with market order (exchange-precise amount)
+            await self.client.ensure_markets_loaded()
+            precise_size = self.client.amount_to_precision(symbol, size)
             side = "buy" if direction == "LONG" else "sell"
-            order = await self.client.close_position(symbol, side, size)
+            order = await self.client.close_position(symbol, side, precise_size)
 
             fill_price = float(order.get("average", current_price) or current_price)
 

@@ -220,3 +220,49 @@ class BinanceClient:
             return float(ticker.get("last", 0))
         except Exception:
             return None
+
+    # -- Precision -------------------------------------------------
+
+    async def ensure_markets_loaded(self) -> None:
+        """Ensure markets are loaded (cached after first call)."""
+        if not self.exchange.markets:
+            await _retry(self.exchange.load_markets, True)
+
+    def amount_to_precision(self, symbol: str, amount: float) -> float:
+        """Round amount to exchange-required precision for a symbol.
+
+        Uses ccxt's built-in precision handling which reads from
+        exchange market data (stepSize / lotSize).
+        """
+        try:
+            return float(self.exchange.amount_to_precision(symbol, amount))
+        except Exception as e:
+            logger.warning("amount_to_precision failed for %s: %s, using raw", symbol, e)
+            return amount
+
+    def price_to_precision(self, symbol: str, price: float) -> float:
+        """Round price to exchange-required tick size for a symbol.
+
+        Uses ccxt's built-in precision handling which reads from
+        exchange market data (tickSize).
+        """
+        try:
+            return float(self.exchange.price_to_precision(symbol, price))
+        except Exception as e:
+            logger.warning("price_to_precision failed for %s: %s, using raw", symbol, e)
+            return price
+
+    def get_market_precision(self, symbol: str) -> dict[str, Any]:
+        """Get precision info for a symbol (for logging/debugging).
+
+        Returns dict with amount_precision, price_precision, min_amount, min_cost.
+        """
+        market = self.exchange.markets.get(symbol, {})
+        precision = market.get("precision", {})
+        limits = market.get("limits", {})
+        return {
+            "amount_precision": precision.get("amount"),
+            "price_precision": precision.get("price"),
+            "min_amount": limits.get("amount", {}).get("min"),
+            "min_cost": limits.get("cost", {}).get("min"),
+        }

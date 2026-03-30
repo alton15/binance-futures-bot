@@ -16,6 +16,29 @@ MAX_RETRIES = 3
 RETRY_DELAY = 5
 
 
+def _to_decimal_places(value: int | float | None) -> int:
+    """Convert precision value to integer decimal places.
+
+    ccxt returns precision as either:
+    - int (DECIMAL_PLACES mode): e.g. 3 means 0.001
+    - float (TICK_SIZE mode): e.g. 0.001 means 3 decimal places
+
+    Always returns int.
+    """
+    if value is None:
+        return 6
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value <= 0:
+            return 0
+        # Convert tick size to decimal places: 0.001 → 3, 0.01 → 2, 1.0 → 0
+        import math
+        dp = max(0, -int(math.floor(math.log10(value))))
+        return dp
+    return 6
+
+
 async def _retry(coro_func, *args, retries=MAX_RETRIES, **kwargs):
     """Retry an async call with exponential backoff."""
     for attempt in range(1, retries + 1):
@@ -272,6 +295,11 @@ class BinanceClient:
 
         Returns a MarketPrecision dataclass used by leverage_calc.calculate_position().
         Falls back to default if market data not loaded.
+
+        Note: ccxt precisionMode varies by exchange.
+        - DECIMAL_PLACES: precision is int (number of decimals, e.g. 3)
+        - TICK_SIZE: precision is float (step size, e.g. 0.001)
+        We normalize both to int decimal places.
         """
         from src.risk.leverage_calc import MarketPrecision
 
@@ -281,7 +309,10 @@ class BinanceClient:
             return MarketPrecision.default()
 
         precision = market.get("precision", {})
+        raw_amount = precision.get("amount", 6)
+        raw_price = precision.get("price")
+
         return MarketPrecision(
-            amount_precision=precision.get("amount", 6),
-            price_precision=precision.get("price"),
+            amount_precision=_to_decimal_places(raw_amount),
+            price_precision=_to_decimal_places(raw_price) if raw_price is not None else None,
         )

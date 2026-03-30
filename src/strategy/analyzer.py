@@ -10,6 +10,7 @@ from src.clients.binance_rest import BinanceClient
 from src.indicators.calculator import compute_indicators
 from src.indicators.signals import generate_signal, Signal
 from src.strategy.adversarial import validate_signal
+from src.scanner.sentiment_filter import fetch_sentiment, evaluate_sentiment
 from src.db.models import save_signal, save_indicator_snapshot
 
 if TYPE_CHECKING:
@@ -114,6 +115,17 @@ async def analyze_coin(
         stoch_k=indicators.stoch_k,
         stoch_d=indicators.stoch_d,
     )
+
+    # Sentiment adjustment (Fear & Greed Index)
+    if primary_signal.direction != "NEUTRAL":
+        sentiment = await fetch_sentiment()
+        sent_adj = evaluate_sentiment(primary_signal.direction, sentiment)
+        if sent_adj.adjustment != 0:
+            adjusted_strength = max(0.0, min(1.0, adjusted_strength + sent_adj.adjustment))
+            logger.info(
+                "Sentiment %s: %+.1f%% (%s), new strength=%.2f",
+                symbol, sent_adj.adjustment * 100, sent_adj.reason, adjusted_strength,
+            )
 
     # Adversarial validation (Bull/Bear debate)
     adversarial_rejected = False

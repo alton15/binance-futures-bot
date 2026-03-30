@@ -28,6 +28,23 @@ class PositionParams:
     liquidation_price: float
     atr: float = 0           # ATR at entry (for trailing stop activation)
 
+    def scale(self, factor: float) -> PositionParams:
+        """Return a new PositionParams with position size scaled by factor.
+
+        SL/TP/liquidation prices remain the same (risk per unit unchanged).
+        Only quantity and derived values (notional, margin) change.
+        """
+        return PositionParams(
+            leverage=self.leverage,
+            position_size=round(self.position_size * factor, 8),
+            notional_value=round(self.notional_value * factor, 4),
+            margin_required=round(self.margin_required * factor, 4),
+            sl_price=self.sl_price,
+            tp_price=self.tp_price,
+            liquidation_price=self.liquidation_price,
+            atr=self.atr,
+        )
+
 
 def _price_precision(price: float) -> int:
     """Determine rounding precision based on price magnitude.

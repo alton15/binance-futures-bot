@@ -351,3 +351,96 @@ def test_scalp_margin_cap():
     )
     # max_margin_per_trade_pct = 0.10 -> max $10 margin
     assert params.margin_required <= 100 * 0.10 + 0.01  # float tolerance
+
+
+# -- Market Precision Tests -----------------------------------------
+
+from src.risk.leverage_calc import MarketPrecision
+
+
+def test_precision_doge_integer_quantity():
+    """DOGE requires integer quantity (0 decimal places)."""
+    precision = MarketPrecision(amount_precision=0, price_precision=5)
+    params = calculate_position(
+        entry_price=0.175, atr=0.005, direction="LONG",
+        leverage=5, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    # Position size must be integer
+    assert params.position_size == int(params.position_size)
+    assert params.position_size > 0
+
+
+def test_precision_btc_3dp_quantity():
+    """BTC requires 3 decimal places for quantity."""
+    precision = MarketPrecision(amount_precision=3, price_precision=1)
+    params = calculate_position(
+        entry_price=84000, atr=500, direction="LONG",
+        leverage=3, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    # Check no more than 3 decimals
+    size_str = f"{params.position_size:.10f}"
+    decimal_part = size_str.split(".")[1]
+    assert all(c == "0" for c in decimal_part[3:])
+
+
+def test_precision_sol_1dp_quantity():
+    """SOL requires 1 decimal place for quantity."""
+    precision = MarketPrecision(amount_precision=1, price_precision=2)
+    params = calculate_position(
+        entry_price=130.5, atr=3.0, direction="SHORT",
+        leverage=4, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    size_str = f"{params.position_size:.10f}"
+    decimal_part = size_str.split(".")[1]
+    assert all(c == "0" for c in decimal_part[1:])
+
+
+def test_precision_shib_integer_with_large_qty():
+    """SHIB: large integer quantity, no decimals."""
+    precision = MarketPrecision(amount_precision=0, price_precision=8)
+    params = calculate_position(
+        entry_price=0.00001234, atr=0.0000002, direction="LONG",
+        leverage=5, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    assert params.position_size == int(params.position_size)
+    assert params.position_size > 0
+
+
+def test_precision_default_fallback():
+    """Without precision, falls back to 6dp amount."""
+    params = calculate_position(
+        entry_price=50000, atr=500, direction="LONG",
+        leverage=3, capital=100, profile=NEUTRAL,
+    )
+    # Default: 6 decimal places (old behavior)
+    assert params.position_size > 0
+
+
+def test_precision_price_from_exchange():
+    """SL/TP uses exchange price precision when provided."""
+    precision = MarketPrecision(amount_precision=3, price_precision=1)
+    params = calculate_position(
+        entry_price=84000, atr=500, direction="LONG",
+        leverage=3, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    # BTC price precision = 1dp
+    sl_decimals = len(str(params.sl_price).rstrip("0").split(".")[-1]) if "." in str(params.sl_price) else 0
+    assert sl_decimals <= 1
+
+
+def test_precision_notional_recalculated():
+    """Notional and margin should match rounded position size."""
+    precision = MarketPrecision(amount_precision=0, price_precision=5)
+    params = calculate_position(
+        entry_price=0.175, atr=0.005, direction="LONG",
+        leverage=5, capital=100, profile=NEUTRAL, precision=precision,
+    )
+    expected_notional = params.position_size * 0.175
+    assert abs(params.notional_value - round(expected_notional, 4)) < 0.01
+
+
+def test_market_precision_frozen():
+    """MarketPrecision should be immutable."""
+    prec = MarketPrecision(amount_precision=3, price_precision=1)
+    with pytest.raises(AttributeError):
+        prec.amount_precision = 5  # type: ignore[misc]

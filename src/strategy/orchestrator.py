@@ -145,6 +145,9 @@ async def run_pipeline(
                     profile=profile,
                 )
 
+                # Get exchange-specific precision for this symbol
+                precision = client.get_market_precision_for_calc(analysis["symbol"])
+
                 position_params = calculate_position(
                     entry_price=analysis["close_price"],
                     atr=analysis.get("atr", 0) or 0,
@@ -153,6 +156,7 @@ async def run_pipeline(
                     capital=current_capital,
                     volatility_24h=volatility,
                     profile=profile,
+                    precision=precision,
                 )
 
                 if position_params.position_size <= 0:

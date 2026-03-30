@@ -50,12 +50,30 @@ def _price_precision(price: float) -> int:
     """Determine rounding precision based on price magnitude.
 
     Low-priced coins need more decimals to preserve SL/TP distances.
+    Used as fallback when exchange precision is not available.
     """
     if price <= 0:
         return 8
     # Number of decimals needed: e.g. $0.0002 → 8, $1.5 → 6, $50000 → 2
     magnitude = -math.floor(math.log10(price))
     return max(2, min(8, magnitude + 4))
+
+
+@dataclass(frozen=True)
+class MarketPrecision:
+    """Exchange-specific precision for a symbol.
+
+    amount_precision: decimal places for quantity (e.g., BTC=3 → 0.001)
+    price_precision: decimal places for price (e.g., BTC=1 → 0.1)
+    """
+
+    amount_precision: int = 6
+    price_precision: int | None = None  # None = use _price_precision fallback
+
+    @staticmethod
+    def default() -> MarketPrecision:
+        """Fallback precision when exchange data is unavailable."""
+        return MarketPrecision(amount_precision=6, price_precision=None)
 
 
 def get_max_leverage(
@@ -100,6 +118,7 @@ def calculate_position(
     capital: float = INITIAL_CAPITAL,
     volatility_24h: float = 0.03,
     profile: ProfileConfig | None = None,
+    precision: MarketPrecision | None = None,
 ) -> PositionParams:
     """Calculate full position parameters.
 
@@ -166,18 +185,30 @@ def calculate_position(
     else:
         liquidation_price = entry_price * (1 + (1 / leverage) - maint_margin)
 
-    # Dynamic precision: use enough decimals to preserve SL/TP distance
-    price_precision = _price_precision(entry_price)
+    # Precision: use exchange-specific when available, fallback to heuristic
+    prec = precision or MarketPrecision.default()
+    amt_prec = prec.amount_precision
+    px_prec = prec.price_precision if prec.price_precision is not None else _price_precision(entry_price)
+
+    # Round position size to exchange precision (critical for DOGE, SHIB etc.)
+    rounded_size = round(position_size, amt_prec)
+    if rounded_size <= 0 and position_size > 0:
+        # If rounding kills the size (e.g., 0.4 BTC rounded to 0dp = 0), use ceil
+        rounded_size = math.ceil(position_size * (10 ** amt_prec)) / (10 ** amt_prec)
+
+    # Recalculate notional/margin based on rounded size
+    rounded_notional = rounded_size * entry_price
+    rounded_margin = rounded_notional / leverage
 
     params = PositionParams(
         leverage=leverage,
-        position_size=round(position_size, 6),
-        notional_value=round(notional_value, 4),
-        margin_required=round(margin_required, 4),
-        sl_price=round(sl_price, price_precision),
-        tp_price=round(tp_price, price_precision),
-        liquidation_price=round(liquidation_price, price_precision),
-        atr=round(atr, price_precision),
+        position_size=rounded_size,
+        notional_value=round(rounded_notional, 4),
+        margin_required=round(rounded_margin, 4),
+        sl_price=round(sl_price, px_prec),
+        tp_price=round(tp_price, px_prec),
+        liquidation_price=round(liquidation_price, px_prec),
+        atr=round(atr, px_prec),
     )
 
     logger.info(

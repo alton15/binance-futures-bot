@@ -26,6 +26,7 @@ Incorporates multi-agent trading firm patterns (inspired by [TradingAgents](http
 - **Dynamic Coin Discovery**: Auto-selects up to 30 candidates from 553+ USDT-M futures symbols every 30 minutes
 - **Dynamic Leverage**: Based on volatility tier x signal strength x (1 - drawdown), auto-adjusted 1-10x per profile
 - **Fee Modeling**: Round-trip taker fee (0.08%) factored into position sizing
+- **Exchange Precision**: Per-symbol amount/price precision from Binance market data — prevents order rejection (DOGE=integer qty, BTC=3dp, etc.)
 - **10-Gate Risk Management**: Margin-based exposure limits, daily loss caps, drawdown blocking, and more — sequential validation
 - **Signal Quality Filters**: MACD opposition / low volume / BB conflict detection → per-profile strength attenuation/rejection
 - **Adversarial Validation**: Bull/Bear debate — counts opposing indicators to reject false signals (4+ opposing = reject)
@@ -88,7 +89,7 @@ binance-futures-bot/
 │   │   └── models.py            # 10 tables + CRUD (aiosqlite)
 │   └── notifications/
 │       └── notifier.py          # Discord webhook notifications (2 channels)
-├── tests/                       # 247 unit tests (16 files)
+├── tests/                       # 255 unit tests (16 files)
 ├── Dockerfile
 ├── docker-compose.yml           # 2 services (bot + scalp)
 ├── pyproject.toml
@@ -520,7 +521,7 @@ Shape: `VM.Standard.A1.Flex` (ARM), Image: Ubuntu 22.04
 ## Testing
 
 ```bash
-# All tests (247)
+# All tests (255)
 pytest tests/ -v
 
 # Individual modules
@@ -529,7 +530,7 @@ pytest tests/test_indicators.py -v          # Technical indicators (5)
 pytest tests/test_signals.py -v             # Signal generation + NEUTRAL dead zone (13)
 pytest tests/test_signal_quality.py -v      # Signal quality filters (16)
 pytest tests/test_coin_scanner.py -v        # Coin scanner (4)
-pytest tests/test_leverage_calc.py -v       # Leverage + fee modeling (30)
+pytest tests/test_leverage_calc.py -v       # Leverage + fee modeling + precision (38)
 pytest tests/test_risk_manager.py -v        # 10-gate risk (14)
 pytest tests/test_profiles.py -v            # Profile immutability + fallback (16)
 pytest tests/test_notifier.py -v            # Notification formatting (7)

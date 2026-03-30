@@ -51,7 +51,7 @@ src/
   scalping/          # 이벤트 드리븐 스캘핑 (watcher, pipeline, monitor)
   db/models.py       # 10개 테이블 + CRUD
   notifications/     # Discord 웹훅 (2채널, 멀티 프로필 비교 리포트)
-tests/               # 247개 단위 테스트 (16개 파일)
+tests/               # 255개 단위 테스트 (16개 파일)
 Dockerfile
 docker-compose.yml   # 2개 서비스 (bot + scalp)
 ```
@@ -82,7 +82,7 @@ docker-compose.yml   # 2개 서비스 (bot + scalp)
 
 ### 4. Testing
 
-- `python -m pytest tests/` 로 실행 (247개 테스트)
+- `python -m pytest tests/` 로 실행 (255개 테스트)
 - 새 지표/전략 추가 시 반드시 테스트 작성
 - 거래소 API는 mock 처리
 

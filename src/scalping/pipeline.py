@@ -125,6 +125,10 @@ class ScalpPipeline:
             )
 
             atr = analysis.get("atr", 0) or 0
+
+            # Get exchange-specific precision for this symbol
+            precision = client.get_market_precision_for_calc(symbol)
+
             position_params = calculate_position(
                 entry_price=analysis["close_price"],
                 atr=atr,
@@ -133,6 +137,7 @@ class ScalpPipeline:
                 capital=current_capital,
                 volatility_24h=volatility_24h,
                 profile=profile,
+                precision=precision,
             )
 
             if position_params.position_size <= 0:

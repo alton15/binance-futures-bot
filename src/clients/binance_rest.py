@@ -266,3 +266,22 @@ class BinanceClient:
             "min_amount": limits.get("amount", {}).get("min"),
             "min_cost": limits.get("cost", {}).get("min"),
         }
+
+    def get_market_precision_for_calc(self, symbol: str) -> Any:
+        """Get MarketPrecision for position calculation.
+
+        Returns a MarketPrecision dataclass used by leverage_calc.calculate_position().
+        Falls back to default if market data not loaded.
+        """
+        from src.risk.leverage_calc import MarketPrecision
+
+        market = self.exchange.markets.get(symbol)
+        if not market:
+            logger.debug("No market data for %s, using default precision", symbol)
+            return MarketPrecision.default()
+
+        precision = market.get("precision", {})
+        return MarketPrecision(
+            amount_precision=precision.get("amount", 6),
+            price_precision=precision.get("price"),
+        )

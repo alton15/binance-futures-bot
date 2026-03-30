@@ -200,6 +200,22 @@ async def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_situations_profile ON situation_outcomes(profile)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_situations_direction ON situation_outcomes(direction)")
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS reflection_insights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern TEXT NOT NULL,
+                description TEXT NOT NULL,
+                sample_count INTEGER NOT NULL DEFAULT 0,
+                win_rate REAL NOT NULL DEFAULT 0,
+                avg_pnl REAL NOT NULL DEFAULT 0,
+                is_positive INTEGER NOT NULL DEFAULT 0,
+                profile TEXT NOT NULL DEFAULT 'neutral',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_reflections_profile ON reflection_insights(profile)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_reflections_pattern ON reflection_insights(pattern)")
+
         # Migration: add profile column to existing tables
         for table in ("trades", "positions", "orders", "pnl_snapshots"):
             try:
@@ -868,6 +884,94 @@ async def get_situation_outcomes(
                WHERE profile=?
                ORDER BY created_at DESC LIMIT ?""",
             (profile, limit),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+# -- Reflection Insights -----------------------------------------------
+
+
+async def save_reflection_insight(
+    pattern: str,
+    description: str,
+    sample_count: int = 0,
+    win_rate: float = 0,
+    avg_pnl: float = 0,
+    is_positive: bool = False,
+    profile: str = "neutral",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> int:
+    """Save or update a reflection insight. Returns insight ID."""
+    async with aiosqlite.connect(str(db_path)) as db:
+        # Delete old insight for same pattern+profile to keep latest
+        await db.execute(
+            "DELETE FROM reflection_insights WHERE pattern=? AND profile=?",
+            (pattern, profile),
+        )
+        cursor = await db.execute(
+            """INSERT INTO reflection_insights
+               (pattern, description, sample_count, win_rate, avg_pnl,
+                is_positive, profile)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (pattern, description, sample_count, win_rate, avg_pnl,
+             int(is_positive), profile),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def get_reflection_insights(
+    profile: str = "neutral",
+    is_positive: bool | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Get reflection insights, optionally filtered by positive/negative."""
+    async with aiosqlite.connect(str(db_path)) as db:
+        db.row_factory = aiosqlite.Row
+        if is_positive is not None:
+            cursor = await db.execute(
+                """SELECT * FROM reflection_insights
+                   WHERE profile=? AND is_positive=?
+                   ORDER BY created_at DESC""",
+                (profile, int(is_positive)),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM reflection_insights WHERE profile=? ORDER BY created_at DESC",
+                (profile,),
+            )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_closed_positions_with_signals(
+    is_paper: bool = True,
+    profile: str = "neutral",
+    limit: int = 500,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Get closed positions joined with their signal data for reflection."""
+    async with aiosqlite.connect(str(db_path)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT p.*, s.strength, s.confirming_count, s.indicator_details,
+                      i.rsi, i.adx, i.atr AS entry_atr
+               FROM positions p
+               LEFT JOIN trades t ON p.trade_id = t.id
+               LEFT JOIN signals s ON t.signal_id = s.id
+               LEFT JOIN indicator_snapshots i ON (
+                   i.symbol = p.symbol
+                   AND i.created_at <= p.opened_at
+                   AND i.id = (
+                       SELECT id FROM indicator_snapshots
+                       WHERE symbol = p.symbol AND created_at <= p.opened_at
+                       ORDER BY created_at DESC LIMIT 1
+                   )
+               )
+               WHERE p.status='closed' AND p.is_paper=? AND p.profile=?
+               ORDER BY p.closed_at DESC LIMIT ?""",
+            (int(is_paper), profile, limit),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]

@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - TRADING_MODE=paper
+      - INITIAL_CAPITAL=700
     volumes:
       - ./data:/app/data
     healthcheck:
@@ -22,6 +25,7 @@ services:
       - .env
     environment:
       - TRADING_MODE=paper
+      - INITIAL_CAPITAL=700
     volumes:
       - ./data:/app/data
     command: scalper --mode paper

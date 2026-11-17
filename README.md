@@ -10,6 +10,43 @@ Automated Binance USDT-M futures trading bot based on technical analysis
 >
 > This software is for **educational and informational purposes only**. It is not financial advice. Use at your own risk. The author is not responsible for any financial losses incurred from using this software. Past performance does not guarantee future results. Always do your own research before trading.
 
+## Trend follower (`src/trend`, paper only)
+
+Multi-asset time-series trend following on 4h bars — the strategy family with the most
+out-of-sample evidence in crypto, and the one whose trade frequency survives VIP0 fees.
+
+- **Data**: `python -m src.trend.data.download` pulls monthly klines + funding from
+  data.binance.vision **including delisted contracts** (no survivorship bias), then
+  `python -m src.trend.data.panel` builds an aligned 2020-01..2026-10 panel
+- **Signal**: ensemble of {-1,0,+1} votes over 3 lookbacks (`donchian` / `tsmom` / `ema`),
+  optional long-only and BTC regime filter (longs only while BTC's own trend is up)
+- **Portfolio**: point-in-time top-N by 30d quote volume (>= 90d history), inverse-vol weights
+  (50% vol budget per slot, |w| <= 0.25, gross <= 2), rebalance band 25%
+- **Costs**: taker 5bp + slippage 3bp per side, historical funding charged every bar
+- **Validation**: untouched holdout 2025-11..2026-10, IS 2021-01..2025-10; every variant ever
+  tried is logged (180 trials) and fed to the Deflated Sharpe Ratio and PBO (CSCV, 16 blocks)
+- **Paper engine**: one step per closed 4h bar using the *same* signal/sizing functions as the
+  backtest (parity test), idempotent funding booking, restart-safe SQLite book, drawdown halt 35%
+
+| Profile | Rule (IS only) | IS Sharpe / CAGR / MaxDD | DSR | Holdout Sharpe / return / MaxDD |
+|---|---|---|---|---|
+| `trend_lo` ema 5-10-20, long-only + BTC regime, top-20, daily | best IS Sharpe in a stable neighbourhood | 1.17 / +21% / −17% | 0.84 | 0.45 / +4.9% / −8% |
+| `trend_ls` tsmom 10-20-40, long-short, top-20, every 4h | best worst-year IS Sharpe (positive every year) | 0.57 / +11.5% / −23% | 0.37 | 0.86 / +17.4% / −14% |
+| BTC buy & hold | benchmark | 0.76 / +32% / −77% | – | −0.57 / −29% / −47% |
+
+**Honest read:** PBO 0.15 (low overfitting risk) but no variant reaches DSR 0.95, so the edge is
+modest and not statistically proven. Both profiles beat buy-and-hold in the bear holdout with far
+smaller drawdowns. Doubling slippage to 6bp cuts `trend_ls` holdout Sharpe to 0.68 (it trades ~98x
+equity/yr) and `trend_lo` to 0.39. Live mode is refused.
+
+```bash
+python -m src.trend.backtest.run                   # grid + DSR/PBO -> data/trend/results/
+trend --profile trend_lo --mode paper              # or: python -m src.trend --profile trend_ls
+trend --profile trend_lo --reset-drawdown          # clear a drawdown halt
+python -m pytest tests/trend                       # 31 tests
+docker compose up -d                               # bot + scalp + trend-lo + trend-ls (all paper)
+```
+
 ## Scalper v2 (`src/scalper`, paper only)
 
 An event-driven rewrite of the scalper. The legacy `src/scalping` stopped receiving data after
@@ -31,7 +68,7 @@ in-sample (t = 1.07, not significant) and −0.009R out-of-sample. For that reas
 refused** by the CLI; the paper engine is a forward test and data recorder.
 
 ```bash
-uv venv && uv pip install -e ".[dev,backtest]"
+uv venv && uv pip install -e ".[dev]"
 scalper --mode paper                      # or: python -m src.scalper --mode paper
 python -m pytest tests/scalper            # 37 tests
 scalper --mode paper --reset-drawdown     # clear a max-drawdown halt (manual reset)
@@ -128,7 +165,7 @@ binance-futures-bot/
 
 ### Requirements
 
-- Python 3.11+
+- Python 3.11+ (3.12+ for the legacy swing bot: pandas-ta)
 - Binance API key (read permission required; futures trading permission needed for live mode)
 - Discord webhook URL (optional)
 

@@ -30,3 +30,41 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  trend-lo:
+    build: .
+    container_name: binance-futures-trend-lo
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - .env
+    environment:
+      - TRADING_MODE=paper
+      - TREND_INITIAL_CAPITAL=700
+    volumes:
+      - ./data:/app/data
+    command: trend --profile trend_lo --mode paper
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  trend-ls:
+    build: .
+    container_name: binance-futures-trend-ls
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - .env
+    environment:
+      - TRADING_MODE=paper
+      - TREND_INITIAL_CAPITAL=700
+    volumes:
+      - ./data:/app/data
+    command: trend --profile trend_ls --mode paper
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3

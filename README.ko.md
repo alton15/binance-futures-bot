@@ -10,6 +10,43 @@
 >
 > 이 소프트웨어는 **교육 및 정보 제공 목적**으로만 제공됩니다. 투자 조언이 아니며, 사용에 따른 모든 책임은 사용자에게 있습니다. 이 소프트웨어 사용으로 인한 금전적 손실에 대해 저자는 책임지지 않습니다.
 
+## 추세추종 (`src/trend`, 페이퍼 전용)
+
+4시간봉 기반 멀티 자산 시계열 추세추종. 크립토에서 아웃오브샘플 근거가 가장 많은 전략군이고,
+매매 빈도가 낮아 VIP0 수수료를 견딥니다.
+
+- **데이터**: `python -m src.trend.data.download`로 data.binance.vision에서 월별 캔들 + 펀딩비를
+  **상장폐지 종목까지 포함해** 받고(생존 편향 없음), `python -m src.trend.data.panel`로
+  2020-01..2026-10 정렬 패널 생성
+- **시그널**: 룩백 3개에 대한 {-1,0,+1} 투표 앙상블(`donchian` / `tsmom` / `ema`),
+  롱 전용과 BTC 레짐 필터(BTC 자체 추세가 상승일 때만 롱) 옵션
+- **포트폴리오**: 시점 기준 30일 거래대금 상위 N(상장 90일 이상), 역변동성 비중
+  (슬롯당 변동성 예산 50%, |w| <= 0.25, 총노출 <= 2), 리밸런스 밴드 25%
+- **비용**: 테이커 5bp + 슬리피지 3bp(편도), 과거 펀딩비를 매 봉 차감
+- **검증**: 홀드아웃 2025-11..2026-10은 선택에 미사용, IS 2021-01..2025-10. 시도한 모든 변형을
+  기록(180개)해 Deflated Sharpe Ratio와 PBO(CSCV, 16블록)에 반영
+- **페이퍼 엔진**: 4시간봉 마감마다 1회 실행, 백테스트와 *동일한* 시그널/사이징 함수 사용
+  (패리티 테스트), 펀딩 중복 차감 방지, 재시작 안전 SQLite 장부, 낙폭 35% 정지
+
+| 프로필 | 선정 규칙 (IS만 사용) | IS Sharpe / CAGR / MaxDD | DSR | 홀드아웃 Sharpe / 수익 / MaxDD |
+|---|---|---|---|---|
+| `trend_lo` ema 5-10-20, 롱 전용 + BTC 레짐, 상위 20, 일 1회 | 주변 변형도 안정적인 최고 IS Sharpe | 1.17 / +21% / −17% | 0.84 | 0.45 / +4.9% / −8% |
+| `trend_ls` tsmom 10-20-40, 롱숏, 상위 20, 4시간마다 | IS 최악 연도 Sharpe 최고 (모든 해 플러스) | 0.57 / +11.5% / −23% | 0.37 | 0.86 / +17.4% / −14% |
+| BTC 보유 | 벤치마크 | 0.76 / +32% / −77% | – | −0.57 / −29% / −47% |
+
+**솔직한 해석:** PBO 0.15로 과최적화 위험은 낮지만 DSR 0.95에 도달한 변형이 없어, 엣지는 작고
+통계적으로 입증되지 않았습니다. 하락장 홀드아웃에서 두 프로필 모두 단순 보유보다 낫고 낙폭이 훨씬
+작습니다. 슬리피지를 6bp로 두 배 하면 `trend_ls` 홀드아웃 Sharpe는 0.68(연 자본 대비 ~98배 회전),
+`trend_lo`는 0.39로 떨어집니다. 실전 모드는 거부됩니다.
+
+```bash
+python -m src.trend.backtest.run                   # 그리드 + DSR/PBO -> data/trend/results/
+trend --profile trend_lo --mode paper              # 또는: python -m src.trend --profile trend_ls
+trend --profile trend_lo --reset-drawdown          # 낙폭 정지 해제
+python -m pytest tests/trend                       # 테스트 31개
+docker compose up -d                               # bot + scalp + trend-lo + trend-ls (전부 페이퍼)
+```
+
 ## 스캘퍼 v2 (`src/scalper`, 페이퍼 전용)
 
 스캘퍼를 이벤트 드리븐 구조로 새로 작성했습니다. 기존 `src/scalping`은 Binance 선물 WebSocket
@@ -31,7 +68,7 @@
 데이터 기록용입니다.
 
 ```bash
-uv venv && uv pip install -e ".[dev,backtest]"
+uv venv && uv pip install -e ".[dev]"
 scalper --mode paper                      # 또는: python -m src.scalper --mode paper
 python -m pytest tests/scalper            # 테스트 37개
 scalper --mode paper --reset-drawdown     # 최대 낙폭 정지 수동 해제
@@ -128,7 +165,7 @@ binance-futures-bot/
 
 ### 요구사항
 
-- Python 3.11+
+- Python 3.11+ (레거시 스윙 봇은 pandas-ta 때문에 3.12+)
 - 바이낸스 API 키 (읽기 권한 필수, 선물 거래 권한은 라이브 모드 시 필요)
 - Discord 웹훅 URL (선택)
 

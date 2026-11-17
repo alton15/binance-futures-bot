@@ -10,6 +10,34 @@ Automated Binance USDT-M futures trading bot based on technical analysis
 >
 > This software is for **educational and informational purposes only**. It is not financial advice. Use at your own risk. The author is not responsible for any financial losses incurred from using this software. Past performance does not guarantee future results. Always do your own research before trading.
 
+## Scalper v2 (`src/scalper`, paper only)
+
+An event-driven rewrite of the scalper. The legacy `src/scalping` stopped receiving data after
+Binance split the futures WebSocket endpoints (2026-04) and its reconnect loop gave up silently.
+
+- **Streams**: `/market/stream` (aggTrade) + `/public/stream` (bookTicker), supervised reconnect
+  with backoff, stale-feed detection, 23h recycle, live SUBSCRIBE/UNSUBSCRIBE on universe refresh
+- **Signal**: 1s bars from aggTrades → statistically extreme moves (`|z| > z_entry` over `lookback_s`)
+  traded with (`follow=True`) or against the move, TP/SL proportional to the move
+- **Execution model** (identical in backtest and paper broker): latency, taker entry at the touch,
+  maker fills only on trade-through, stop slippage, VIP0 fees (maker 0.02% / taker 0.05%)
+- **Risk**: fee-aware sizing, liquidation-distance leverage cap, max positions, per-symbol cooldown,
+  daily-loss halt (auto-resets at UTC midnight), max-drawdown halt (manual reset)
+- **Backtest/optimizer**: `python -m src.scalper.backtest.optimize` (numba, 4-fold walk-forward)
+
+**Validation result (60 days × 10 alts, realistic fills): no robust edge after fees.**
+Fading extreme moves was negative in all 1,944 configs; following them was at best +0.045R/trade
+in-sample (t = 1.07, not significant) and −0.009R out-of-sample. For that reason **live mode is
+refused** by the CLI; the paper engine is a forward test and data recorder.
+
+```bash
+uv venv && uv pip install -e ".[dev,backtest]"
+scalper --mode paper                      # or: python -m src.scalper --mode paper
+python -m pytest tests/scalper            # 37 tests
+scalper --mode paper --reset-drawdown     # clear a max-drawdown halt (manual reset)
+docker compose up -d scalp                # paper scalper in Docker
+```
+
 ## Overview
 
 A Binance futures automated trading bot that operates purely on technical indicator algorithms without any AI. No separate AI subscription is required. It automates the entire process from coin discovery to signal generation, risk management, order execution, and position monitoring. It can run on a local or cloud server at no additional cost.

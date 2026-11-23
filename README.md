@@ -45,7 +45,13 @@ trend --profile trend_lo --mode paper              # or: python -m src.trend --p
 trend --profile trend_lo --reset-drawdown          # clear a drawdown halt
 python -m pytest tests/trend                       # 31 tests
 docker compose up -d                               # bot + scalp + trend-lo + trend-ls (all paper)
+python -m scripts.paper_compare > summary.txt      # all versions side by side (stdout)
 ```
+
+`paper_compare` is safe while the containers run: it reads a private copy of each database (db + `-wal`).
+Don't open the live `data/*.db` files with another read-write client (`sqlite3`, `docker exec ... python`).
+File locks don't work across the Docker Desktop bind mount, so that client can delete the bot's `-wal`/`-shm`
+on close, and the bot then keeps writing to files nobody else can see until it shuts down.
 
 ## Scalper v2 (`src/scalper`, paper only)
 

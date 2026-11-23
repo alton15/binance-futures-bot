@@ -45,7 +45,13 @@ trend --profile trend_lo --mode paper              # 또는: python -m src.trend
 trend --profile trend_lo --reset-drawdown          # 낙폭 정지 해제
 python -m pytest tests/trend                       # 테스트 31개
 docker compose up -d                               # bot + scalp + trend-lo + trend-ls (전부 페이퍼)
+python -m scripts.paper_compare > summary.txt      # 전 버전 결과 비교표 (stdout)
 ```
+
+`paper_compare`는 컨테이너가 돌아가는 중에도 안전하게 쓸 수 있습니다. 각 DB를 임시 사본(db + `-wal`)으로 복사해서 읽습니다.
+실행 중인 `data/*.db`를 다른 읽기/쓰기 클라이언트(`sqlite3`, `docker exec ... python`)로 직접 열면 안 됩니다.
+Docker Desktop 바인드 마운트에서는 파일 잠금이 동작하지 않아서, 그 클라이언트가 닫힐 때 봇의 `-wal`/`-shm`을 지울 수 있습니다.
+그러면 봇은 종료될 때까지 아무도 볼 수 없는 파일에 계속 기록합니다.
 
 ## 스캘퍼 v2 (`src/scalper`, 페이퍼 전용)
 
